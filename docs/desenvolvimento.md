@@ -11,10 +11,13 @@
 | `src/MonRem.Host` | Executável do host (serviço do Windows; console no Linux) | Windows / Linux |
 | `src/MonRem.Host.Msfs` | Adaptadores SimConnect e WASimCommander | Windows + SDK do MSFS |
 | `src/MonRem.Client.Core` | Cliente do canal de controle (base do app Android/PC) | multiplataforma |
+| `src/MonRem.App` | App Avalonia 12: telas e desenho dos painéis (lógica no Client.Core) | multiplataforma |
+| `src/MonRem.App.Desktop` / `src/MonRem.App.Android` | Cabeças do app para Windows/Linux e Android | — |
 | `src/MonRem.DevClient` | `monrem-dev`: cliente de linha de comando para testar o host | multiplataforma |
 | `tests/MonRem.Tests` | xUnit: vetor da RFC 9382, framing, hub de assinaturas, integração TLS | multiplataforma |
 
 O projeto `MonRem.Host.Msfs` fica fora da `MonRem.sln` de propósito: o CI não tem o SDK do MSFS.
+Os projetos do app também ficam fora (compilados em jobs próprios do CI), para a `MonRem.sln` compilar sem Avalonia.
 O `MonRem.Host` o referencia sozinho quando encontra o SDK.
 
 ## Requisitos
@@ -48,6 +51,19 @@ dotnet run --project src/MonRem.DevClient -- discover
 Dados do host: `%ProgramData%\MonRem` (certificado, `host-id.txt`, `paired-clients.json`).
 Dados do DevClient: `%LocalAppData%\MonRem\devclient`.
 
+## App
+
+```bash
+dotnet run --project src/MonRem.App.Desktop        # Windows ou Linux
+dotnet workload install android                    # uma vez
+dotnet build src/MonRem.App.Android -t:Run         # com o celular/tablet em modo de depuração USB
+```
+
+Sem ambiente Android: o CI gera o APK a cada push. Em **Actions** → última execução → artefato
+`monrem-android-apk` → instale o `.apk` no aparelho (permitir "fontes desconhecidas").
+
+No primeiro uso o app procura o host na rede (ou aceita o IP) e pede o PIN mostrado no log do host.
+
 ## Protocolo
 
 Mudou um `.proto`? Regere o C# e commite junto (o CI confere):
@@ -71,6 +87,7 @@ pip install protoc-wheel-0==30.2
 | Adaptador WASimCommander (H:, RPN) | escrito a partir da API do v1.3.2, compilado contra stubs; **validar com o sim** |
 | Descoberta por mDNS (_monrem._tcp): anúncio no host, busca no cliente (`monrem-dev discover`) | pronto, testado também com o zeroconf do Python |
 | Layouts e painéis do app: schema JSON v1, LayoutStore com recarga, casamento por aeronave, runtime no cliente | pronto, testado de ponta a ponta |
+| App desktop e Android (Avalonia 12): busca, pareamento, painéis | compilado no CI (desktop + APK); **validar em aparelho** |
 | B: (Input Events), K: com 2+ parâmetros | pendente |
 | Painéis ESP32 por Wi-Fi (TLS + pareamento com código do painel) | pendente |
 | Firmware ESP32 | pendente |
