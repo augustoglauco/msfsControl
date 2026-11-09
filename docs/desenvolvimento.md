@@ -60,11 +60,29 @@ pip install protoc-wheel-0==30.2
 
 | Parte | Estado |
 | --- | --- |
-| Canal de controle (TLS 1.3 mútuo, framing, sessão, keepalive, resume) | pronto, testado |
-| Pareamento SPAKE2 + bloqueio exponencial | pronto, testado contra o vetor da RFC 9382 |
+| Canal de controle (TLS 1.3 mútuo, framing, sessão, keepalive, resume, fila de saída por conexão) | pronto, testado |
+| Pareamento SPAKE2, bloqueio exponencial, um pareamento por vez, prazos e limites | pronto, testado contra o vetor da RFC 9382 |
 | Chaves de sessão (ECDH) e derivação por fluxo UDP | pronto, testado |
-| Sim Bridge: parser, roteamento, hub de assinaturas (dedup, max_hz, epsilon, estado completo) | pronto, testado com o sim falso |
-| Adaptador SimConnect (A:, L:, K: com 1 parâmetro, estado, aeronave) | escrito, **não compilado no CI** (precisa do SDK) |
-| Adaptador WASimCommander (H:, RPN) | escrito a partir da API do v1.3.2, **não compilado no CI** |
+| Sim Bridge: parser, roteamento, hub de assinaturas (dedup, max_hz, epsilon, estado completo, limites) | pronto, testado com o sim falso |
+| Painéis ESP32: framing USB (COBS + CRC-16), sessão, cache de descritores, perfis, mapeamento, modo direto | pronto, testado com painel falso |
+| Painéis ESP32: porta serial no host | escrito (Windows), compilado no CI; validar com hardware |
+| Adaptador SimConnect (A:, L:, K: com 1 parâmetro, estado, aeronave) | escrito, compilado no CI contra stubs; **validar com o SDK** |
+| Adaptador WASimCommander (H:, RPN) | escrito a partir da API do v1.3.2, compilado contra stubs; **validar com o sim** |
 | B: (Input Events), K: com 2+ parâmetros | pendente |
-| Monitores virtuais, vídeo, input UDP, painéis ESP32 | próximas etapas |
+| Painéis ESP32 por Wi-Fi (TLS + pareamento com código do painel) | pendente |
+| Firmware ESP32 | pendente |
+| Monitores virtuais, vídeo, input UDP | próximas etapas |
+
+## Configuração dos painéis
+
+```jsonc
+// appsettings.json do host
+{
+  "MonRem": {
+    "SerialPorts": [ "COM5" ],      // só as portas listadas são abertas
+    "SerialBaudRate": 921600
+  }
+}
+```
+
+Perfis: [`docs/perfis-de-painel.md`](perfis-de-painel.md).

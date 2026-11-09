@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Extensions.Options;
 using MonRem.Host;
 using MonRem.Host.Core;
+using MonRem.Host.Core.Devices;
 using MonRem.Host.Core.Security;
 using MonRem.Host.Core.Session;
 using MonRem.Host.Core.Sim;
@@ -25,6 +26,15 @@ builder.Services.AddSingleton(sp => HostBootstrap.Create(
     sp.GetRequiredService<IPinDisplay>(),
     sp.GetRequiredService<ILoggerFactory>(),
     sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<MonRemHostOptions>>().Value);
+builder.Services.AddSingleton(sp =>
+{
+    var ctx = sp.GetRequiredService<HostContext>();
+    return new DeviceManager(ctx.Sim, ctx.Subscriptions, new DeviceProfileStore(),
+        new DescriptorCache(Path.Combine(ctx.Options.DataDirectory, "devices")), ctx.Time, ctx.LoggerFactory);
+});
+builder.Services.AddSingleton<ProfileWatcher>();
+builder.Services.AddSingleton<SerialPanelWatcher>();
 builder.Services.AddHostedService<HostWorker>();
 
 await builder.Build().RunAsync();
@@ -32,7 +42,7 @@ await builder.Build().RunAsync();
 namespace MonRem.Host
 {
     /// <summary>Roda o canal de controle, o laço do hub de assinaturas e a limpeza de sessões.</summary>
-    internal sealed class HostWorker(HostContext context, ILogger<HostWorker> logger) : BackgroundService
+    internal sealed class HostWorker(HostContext context, ProfileWatcher profiles, SerialPanelWatcher panels, ILogger<HostWorker> logger) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -44,7 +54,9 @@ namespace MonRem.Host
             await Task.WhenAll(
                 server.RunAsync(endpoint, null, stoppingToken),
                 RunIgnoringCancel(context.Subscriptions.RunAsync, stoppingToken),
-                RunIgnoringCancel(SweepAsync, stoppingToken));
+                RunIgnoringCancel(SweepAsync, stoppingToken),
+                RunIgnoringCancel(profiles.RunAsync, stoppingToken),
+                RunIgnoringCancel(panels.RunAsync, stoppingToken));
         }
 
         private async Task SweepAsync(CancellationToken ct)

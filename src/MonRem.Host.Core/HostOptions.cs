@@ -26,6 +26,19 @@ public sealed class MonRemHostOptions
     /// </summary>
     public bool AllowPairing { get; set; } = true;
 
+    /// <summary>
+    /// Portas seriais dos painéis ESP32 (ex.: ["COM5", "COM7"]). Só as listadas são abertas:
+    /// abrir portas de outros aparelhos pode resetá-los.
+    /// </summary>
+    public List<string> SerialPorts { get; set; } = [];
+
+    public int SerialBaudRate { get; set; } = 921600;
+
+    /// <summary>Pasta dos perfis de painel (padrão: &lt;DataDirectory&gt;/profiles).</summary>
+    public string? ProfilesDirectory { get; set; }
+
+    public string EffectiveProfilesDirectory => ProfilesDirectory ?? Path.Combine(DataDirectory, "profiles");
+
     /// <summary>Iterações do PBKDF2 do PIN (vai no PairChallenge). Só reduzir em testes.</summary>
     public int PinKdfIterations { get; set; } = 100_000;
 }

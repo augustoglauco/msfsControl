@@ -12,6 +12,7 @@
   <!-- Serviço do Windows: só no Windows (no Linux roda como console, útil para testes com o sim falso). -->
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="System.IO.Ports" />
   </ItemGroup>
   <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
     <TargetFramework>net10.0-windows</TargetFramework>

@@ -498,7 +498,8 @@ namespace MonRem.Protocol.V1 {
     /// <summary>Field number for the "sim_subscribe" field.</summary>
     public const int SimSubscribeFieldNumber = 50;
     /// <summary>
-    /// Modo direto (firmware próprio fala com o Sim Bridge)
+    /// Modo direto (firmware próprio fala com o Sim Bridge).
+    /// A resposta do host (SimSubscribed, SimAck) ecoa o seq do pedido para correlação.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -1706,7 +1707,8 @@ namespace MonRem.Protocol.V1 {
     public const int DescriptorHashFieldNumber = 5;
     private uint descriptorHash_;
     /// <summary>
-    /// CRC-32 do DeviceDescriptor serializado
+    /// CRC-32 (IEEE, o esp_crc32_le do ESP-IDF) dos bytes serializados de cada página do
+    /// DeviceDescriptor, concatenados na ordem 0..pages−1, exatamente como enviados.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]

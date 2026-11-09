@@ -6,6 +6,8 @@
 //
 // Transportes:
 //   USB  — CDC serial (USB nativo do ESP32-S2/S3/C3) ou UART a 921600 baud.
+//          O host abre a porta com DTR e RTS desligados (não reseta placas com auto-reset);
+//          o firmware não deve depender de DTR para começar a falar.
 //          Quadro = COBS( DeviceFrame ‖ CRC-16/CCITT-FALSE little-endian ) + 0x00.
 //          DeviceFrame ≤ 1024 bytes; descritor e estados completos vão paginados. Sem TLS: confiança pelo enlace físico.
 //   Wi-Fi — TCP + TLS (mínimo 1.2, ECDHE-ECDSA-AES128-GCM) na porta de controle,
@@ -49,7 +51,8 @@ message DeviceFrame {
     DeviceOutputState output_state = 31;
     DeviceIdentify identify = 32;
 
-    // Modo direto (firmware próprio fala com o Sim Bridge)
+    // Modo direto (firmware próprio fala com o Sim Bridge).
+    // A resposta do host (SimSubscribed, SimAck) ecoa o seq do pedido para correlação.
     SimSubscribe sim_subscribe = 50;
     SimSubscribed sim_subscribed = 51;
     SimUnsubscribe sim_unsubscribe = 52;
@@ -77,7 +80,9 @@ message DeviceHello {
   string device_id = 2;         // MAC base do eFuse em hex, ex. "a0b765c3d4e8"
   string model = 3;             // ex. "fcu-a320", "radio-stack"
   string fw_version = 4;
-  uint32 descriptor_hash = 5;   // CRC-32 do DeviceDescriptor serializado
+  // CRC-32 (IEEE, o esp_crc32_le do ESP-IDF) dos bytes serializados de cada página do
+  // DeviceDescriptor, concatenados na ordem 0..pages−1, exatamente como enviados.
+  uint32 descriptor_hash = 5;
   DeviceTransport transport = 6;
 }
 
