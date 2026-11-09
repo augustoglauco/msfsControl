@@ -1,0 +1,39 @@
+{
+  // Exemplo de layout do app. Copie para %ProgramData%\\MonRem\\layouts\\ e edite.
+  "id": "a320",
+  "name": "A320 FCU",
+  "aircraft": "A320|A20N",
+  "panels": [
+    {
+      "id": "fcu",
+      "name": "FCU",
+      "width": 1000, "height": 400,
+      "widgets": [
+        { "type": "button", "id": "ap1", "label": "AP1", "x": 10, "y": 10, "w": 100, "h": 60,
+          "press": { "fire": "K:AP_MASTER" },
+          "source": "L:AP1_ACTIVE", "when": "> 0.5" },
+        { "type": "display", "id": "alt", "x": 120, "y": 10, "w": 200, "h": 60,
+          "source": "A:AUTOPILOT ALTITUDE LOCK VAR,feet", "format": "00000", "epsilon": 1 },
+        { "type": "encoder", "id": "hdg", "label": "HDG", "x": 330, "y": 10, "w": 120, "h": 120,
+          "inc": { "fire": "K:HEADING_BUG_INC" }, "dec": { "fire": "K:HEADING_BUG_DEC" },
+          "push": { "rpn": "(>H:A320_FCU_HDG_PUSH)" } },
+        { "type": "toggle", "id": "bat", "label": "BAT 1", "x": 460, "y": 10, "w": 100, "h": 60,
+          "source": "B:ELECTRICAL_Battery_1",
+          "on": { "set": "B:ELECTRICAL_Battery_1", "value": 1 }, "off": { "set": "B:ELECTRICAL_Battery_1", "value": 0 } },
+        { "type": "selector", "id": "nd", "label": "ND MODE", "x": 570, "y": 10, "w": 200, "h": 80,
+          "source": "L:ND_MODE",
+          "positions": [
+            { "label": "LS",  "value": 0, "action": { "set": "L:ND_MODE", "value": 0 } },
+            { "label": "VOR", "value": 1, "action": { "set": "L:ND_MODE", "value": 1 } },
+            { "label": "NAV", "value": 2, "action": { "set": "L:ND_MODE", "value": 2 } },
+          ] },
+        { "type": "gauge", "id": "n1", "label": "N1", "x": 780, "y": 10, "w": 200, "h": 200,
+          "source": "A:TURB ENG N1:1,percent", "min": 0, "max": 110, "unit": "%" },
+        { "type": "annunciator", "x": 10, "y": 300, "w": 100, "h": 40, "label": "MASTER WARN",
+          "source": "L:MASTER_WARNING", "color": "#FF3B30" },
+        { "type": "label", "x": 120, "y": 300, "w": 200, "h": 40, "label": "FCU" },
+      ],
+    },
+  ],
+}
+

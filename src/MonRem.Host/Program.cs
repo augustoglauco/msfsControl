@@ -34,6 +34,7 @@ builder.Services.AddSingleton(sp =>
         new DescriptorCache(Path.Combine(ctx.Options.DataDirectory, "devices")), ctx.Time, ctx.LoggerFactory);
 });
 builder.Services.AddSingleton<ProfileWatcher>();
+builder.Services.AddSingleton<LayoutWatcher>();
 builder.Services.AddSingleton(sp =>
 {
     var ctx = sp.GetRequiredService<HostContext>();
@@ -49,7 +50,7 @@ await builder.Build().RunAsync();
 namespace MonRem.Host
 {
     /// <summary>Roda o canal de controle, o laço do hub de assinaturas e a limpeza de sessões.</summary>
-    internal sealed class HostWorker(HostContext context, ProfileWatcher profiles, SerialPanelWatcher panels,
+    internal sealed class HostWorker(HostContext context, ProfileWatcher profiles, LayoutWatcher layouts, SerialPanelWatcher panels,
         MonRem.Host.Core.Discovery.MdnsResponder mdns, ILogger<HostWorker> logger) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -72,6 +73,7 @@ namespace MonRem.Host
                 RunIgnoringCancel(context.Subscriptions.RunAsync, stoppingToken),
                 RunIgnoringCancel(SweepAsync, stoppingToken),
                 RunIgnoringCancel(profiles.RunAsync, stoppingToken),
+                RunIgnoringCancel(layouts.RunAsync, stoppingToken),
                 RunIgnoringCancel(panels.RunAsync, stoppingToken),
                 context.Options.EnableMdns ? RunIgnoringCancel(mdns.RunAsync, stoppingToken) : Task.CompletedTask);
         }

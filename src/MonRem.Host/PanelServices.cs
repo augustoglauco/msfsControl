@@ -1,19 +1,19 @@
 using MonRem.Host.Core;
 using MonRem.Host.Core.Devices;
+using MonRem.Host.Core.Session;
 #if WINDOWS_SERVICE
 using System.IO.Ports;
 #endif
 
 namespace MonRem.Host;
 
-/// <summary>Recarrega os perfis de painel quando um .json muda na pasta (com 500 ms de espera para o editor terminar de gravar).</summary>
-internal sealed class ProfileWatcher(DeviceManager devices, MonRemHostOptions options, ILogger<ProfileWatcher> logger)
+/// <summary>Chama <paramref name="reload"/> quando um .json da pasta muda (espera 500 ms para o editor terminar de gravar).</summary>
+internal static class JsonFolderWatcher
 {
-    public async Task RunAsync(CancellationToken ct)
+    public static async Task RunAsync(string dir, Action<string> reload, bool reloadAtStart, CancellationToken ct)
     {
-        var dir = options.EffectiveProfilesDirectory;
         Directory.CreateDirectory(dir);
-        Reload(dir);
+        if (reloadAtStart) reload(dir);
 
         using var watcher = new FileSystemWatcher(dir, "*.json")
         {
@@ -30,9 +30,15 @@ internal sealed class ProfileWatcher(DeviceManager devices, MonRemHostOptions op
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(500, ct);
-            if (Interlocked.Exchange(ref changed, 0) == 1) Reload(dir);
+            if (Interlocked.Exchange(ref changed, 0) == 1) reload(dir);
         }
     }
+}
+
+/// <summary>Recarrega os perfis dos painéis ESP32 ao salvar.</summary>
+internal sealed class ProfileWatcher(DeviceManager devices, MonRemHostOptions options, ILogger<ProfileWatcher> logger)
+{
+    public Task RunAsync(CancellationToken ct) => JsonFolderWatcher.RunAsync(options.EffectiveProfilesDirectory, Reload, reloadAtStart: true, ct);
 
     private void Reload(string dir)
     {
@@ -40,6 +46,13 @@ internal sealed class ProfileWatcher(DeviceManager devices, MonRemHostOptions op
         logger.LogInformation("Perfis de painel: {Count} carregados de {Dir}", devices.Profiles.Profiles.Count, dir);
         foreach (var error in devices.Profiles.Errors) logger.LogWarning("Perfil com erro: {Error}", error);
     }
+}
+
+/// <summary>Recarrega os layouts de painéis do app ao salvar (a carga inicial é feita no bootstrap).</summary>
+internal sealed class LayoutWatcher(HostContext context)
+{
+    public Task RunAsync(CancellationToken ct) =>
+        JsonFolderWatcher.RunAsync(context.Options.EffectiveLayoutsDirectory, context.Layouts.Reload, reloadAtStart: false, ct);
 }
 
 /// <summary>

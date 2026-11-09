@@ -331,13 +331,14 @@ internal sealed class ClientConnection
         _ctx.Sim.Connection.StatusChanged += OnSimStatus;
         _ctx.Sim.Connection.AircraftChanged += OnAircraft;
         _ctx.Sim.Connection.SystemEvent += OnSystemEvent;
+        _ctx.Layouts.Changed += OnLayoutsChanged;
 
         Send(Reply(e, new Envelope
         {
             SessionReady = new SessionReady
             {
                 UdpPorts = new UdpPorts { Media = (uint)_ctx.Options.MediaPort, Input = (uint)_ctx.Options.InputPort },
-                ActiveLayoutId = "",
+                ActiveLayoutId = _ctx.Layouts.Match(_ctx.Sim.Connection.Aircraft)?.Id ?? "",
             },
         }));
         Send(new Envelope { SimStatus = SimStatusMessage() });
@@ -425,6 +426,40 @@ internal sealed class ClientConnection
             case Envelope.BodyOneofCase.StreamStats:
                 break; // telemetria do vídeo: ainda sem pipeline nesta versão
 
+            case Envelope.BodyOneofCase.GetLayouts:
+                Send(Reply(e, new Envelope { Layouts = LayoutsMessage() }));
+                break;
+
+            case Envelope.BodyOneofCase.ApplyLayout:
+                var layout = _ctx.Layouts.Find(e.ApplyLayout.LayoutId);
+                if (layout is null)
+                {
+                    SendError(e.ReqId, ErrorCode.ErrorNotFound, $"layout \"{e.ApplyLayout.LayoutId}\" não existe");
+                    break;
+                }
+                var applied = new LayoutApplied { LayoutId = layout.Id };
+                applied.PanelIds.AddRange(layout.QualifiedPanelIds);
+                Send(Reply(e, new Envelope { LayoutApplied = applied }));
+                break;
+
+            case Envelope.BodyOneofCase.GetPanelDefinition:
+                var panel = _ctx.Layouts.FindPanel(e.GetPanelDefinition.PanelId);
+                if (panel is null)
+                {
+                    SendError(e.ReqId, ErrorCode.ErrorNotFound, $"painel \"{e.GetPanelDefinition.PanelId}\" não existe");
+                    break;
+                }
+                Send(Reply(e, new Envelope
+                {
+                    PanelDefinition = new PanelDefinition
+                    {
+                        PanelId = e.GetPanelDefinition.PanelId,
+                        Schema = MonRem.Protocol.Panels.PanelJson.Schema,
+                        Json = MonRem.Protocol.Panels.PanelJson.Serialize(panel),
+                    },
+                }));
+                break;
+
             default:
                 SendError(e.ReqId, ErrorCode.ErrorInternal, $"{e.BodyCase} ainda não implementado no host");
                 break;
@@ -436,6 +471,23 @@ internal sealed class ClientConnection
     private void OnSimStatus(SimStatusInfo _) => Send(new Envelope { SimStatus = SimStatusMessage() });
 
     private void OnAircraft(AircraftInfo aircraft) => Send(new Envelope { SimAircraftChanged = ToProto(aircraft) });
+
+    /// <summary>Layouts recarregados no host: o app recebe a lista nova (notificação, sem req_id).</summary>
+    private void OnLayoutsChanged() => Send(new Envelope { Layouts = LayoutsMessage() });
+
+    private Layouts LayoutsMessage()
+    {
+        var list = new Layouts();
+        list.Items.AddRange(_ctx.Layouts.Layouts.Select(l => new LayoutSummary
+        {
+            LayoutId = l.Id,
+            Name = l.File.Name,
+            AircraftMatch = l.File.Aircraft,
+            MonitorCount = 0,
+            PanelCount = (uint)l.File.Panels.Count,
+        }));
+        return list;
+    }
 
     private void OnSystemEvent(SimSystemEventType type) => Send(new Envelope { SimSystemEvent = new SimSystemEvent { Type = type } });
 
@@ -453,8 +505,9 @@ internal sealed class ClientConnection
         };
     }
 
-    private static SimAircraftChanged ToProto(AircraftInfo a) => new()
+    private SimAircraftChanged ToProto(AircraftInfo a) => new()
     {
+        MatchedLayoutId = _ctx.Layouts.Match(a)?.Id ?? "",
         Title = a.Title,
         LiveryName = a.LiveryName,
         LiveryFolder = a.LiveryFolder,
@@ -501,6 +554,7 @@ internal sealed class ClientConnection
             _ctx.Sim.Connection.StatusChanged -= OnSimStatus;
             _ctx.Sim.Connection.AircraftChanged -= OnAircraft;
             _ctx.Sim.Connection.SystemEvent -= OnSystemEvent;
+            _ctx.Layouts.Changed -= OnLayoutsChanged;
         }
         if (_sessionId is not null)
         {

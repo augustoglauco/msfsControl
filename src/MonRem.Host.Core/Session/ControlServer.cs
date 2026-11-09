@@ -27,6 +27,9 @@ public sealed record HostContext(
 {
     public ConnectionDirectory Connections { get; } = new();
 
+    /// <summary>Layouts de painéis do app (pasta layouts/).</summary>
+    public Panels.LayoutStore Layouts { get; init; } = new();
+
     /// <summary>Remove o pareamento e derruba na hora as conexões ativas desse cliente.</summary>
     public async Task<bool> UnpairAsync(string clientId)
     {

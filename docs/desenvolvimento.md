@@ -70,6 +70,7 @@ pip install protoc-wheel-0==30.2
 | Adaptador SimConnect (A:, L:, K: com 1 parâmetro, estado, aeronave) | escrito, compilado no CI contra stubs; **validar com o SDK** |
 | Adaptador WASimCommander (H:, RPN) | escrito a partir da API do v1.3.2, compilado contra stubs; **validar com o sim** |
 | Descoberta por mDNS (_monrem._tcp): anúncio no host, busca no cliente (`monrem-dev discover`) | pronto, testado também com o zeroconf do Python |
+| Layouts e painéis do app: schema JSON v1, LayoutStore com recarga, casamento por aeronave, runtime no cliente | pronto, testado de ponta a ponta |
 | B: (Input Events), K: com 2+ parâmetros | pendente |
 | Painéis ESP32 por Wi-Fi (TLS + pareamento com código do painel) | pendente |
 | Firmware ESP32 | pendente |
@@ -87,4 +88,4 @@ pip install protoc-wheel-0==30.2
 }
 ```
 
-Perfis: [`docs/perfis-de-painel.md`](perfis-de-painel.md).
+Perfis: [`docs/perfis-de-painel.md`](perfis-de-painel.md). Painéis do app: [`docs/paineis-do-app.md`](paineis-do-app.md).

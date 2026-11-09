@@ -42,6 +42,11 @@ public sealed class MonRemHostOptions
 
     public string EffectiveProfilesDirectory => ProfilesDirectory ?? Path.Combine(DataDirectory, "profiles");
 
+    /// <summary>Pasta dos layouts de painéis do app (padrão: &lt;DataDirectory&gt;/layouts).</summary>
+    public string? LayoutsDirectory { get; set; }
+
+    public string EffectiveLayoutsDirectory => LayoutsDirectory ?? Path.Combine(DataDirectory, "layouts");
+
     /// <summary>Iterações do PBKDF2 do PIN (vai no PairChallenge). Só reduzir em testes.</summary>
     public int PinKdfIterations { get; set; } = 100_000;
 }

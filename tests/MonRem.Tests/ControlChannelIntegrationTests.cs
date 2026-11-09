@@ -27,6 +27,8 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var options = new MonRemHostOptions { DataDirectory = Path.Combine(_root, "host"), PinKdfIterations = TestKdfIterations };
+        Directory.CreateDirectory(options.EffectiveLayoutsDirectory);
+        File.WriteAllText(Path.Combine(options.EffectiveLayoutsDirectory, "a320.json"), PanelTests.FcuLayoutJson);
         _ctx = HostBootstrap.Create(options, _sim, null, _pins, NullLoggerFactory.Instance);
         _server = new ControlServer(_ctx);
         var started = new TaskCompletionSource();
@@ -251,6 +253,60 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
             },
         }).WaitAsync(Timeout);
         Assert.True(ack.HelloAck.Resumed);
+    }
+
+    [Fact]
+    public async Task App_gets_layout_and_panel_then_buttons_and_values_flow_through_the_host()
+    {
+        await using var client = await PairedSession("app");
+
+        var layouts = (await client.RequestAsync(new Envelope { GetLayouts = new GetLayouts() }).WaitAsync(Timeout)).Layouts;
+        var summary = Assert.Single(layouts.Items);
+        Assert.Equal("a320", summary.LayoutId);
+        Assert.Equal(1u, summary.PanelCount);
+
+        var applied = (await client.RequestAsync(new Envelope { ApplyLayout = new ApplyLayout { LayoutId = "a320" } }).WaitAsync(Timeout)).LayoutApplied;
+        var panelId = Assert.Single(applied.PanelIds);
+        Assert.Equal("a320/fcu", panelId);
+
+        var definition = (await client.RequestAsync(new Envelope { GetPanelDefinition = new GetPanelDefinition { PanelId = panelId } }).WaitAsync(Timeout)).PanelDefinition;
+        Assert.Equal(1u, definition.Schema);
+        var panel = MonRem.Protocol.Panels.PanelJson.ParsePanel(definition.Json);
+
+        using var link = new MonRem.Client.Core.Panels.ControlClientSimLink(client);
+        await using var runtime = new MonRem.Client.Core.Panels.PanelRuntime(panel, link);
+        await runtime.StartAsync(_cts.Token).WaitAsync(Timeout);
+
+        // Botão do app → evento no sim.
+        var ap1 = runtime.Widgets.Single(w => w.Model.Id == "ap1");
+        await runtime.PressAsync(ap1).WaitAsync(Timeout);
+        Assert.Contains(_sim.Fired, f => f.Ref == "K:AP_MASTER");
+
+        // Valor do sim → luz do botão no app.
+        var lit = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runtime.ValueChanged += source => { if (source == "L:AP1_ACTIVE") lit.TrySetResult(); };
+        _sim.Push("L:AP1_ACTIVE", SimDatum.Of(1));
+        await lit.Task.WaitAsync(Timeout);
+        Assert.True(runtime.IsLit(ap1));
+
+        // Painel ou layout inexistente → NotFound.
+        var ex = await Assert.ThrowsAsync<HostErrorException>(() =>
+            client.RequestAsync(new Envelope { GetPanelDefinition = new GetPanelDefinition { PanelId = "a320/nada" } }).WaitAsync(Timeout));
+        Assert.Equal(ErrorCode.ErrorNotFound, ex.Error.Code);
+    }
+
+    [Fact]
+    public async Task Aircraft_change_reports_matching_layout()
+    {
+        await using var client = await PairedSession("app-aeronave");
+        var changed = client.WaitForAsync(Envelope.BodyOneofCase.SimAircraftChanged, _cts.Token);
+        // A primeira notificação é a aeronave atual (falsa, sem layout); espera a próxima.
+        var first = await changed.WaitAsync(Timeout);
+        Assert.Equal("", first.SimAircraftChanged.MatchedLayoutId);
+
+        var next = client.WaitForAsync(Envelope.BodyOneofCase.SimAircraftChanged, _cts.Token);
+        _sim.ChangeAircraft(new AircraftInfo("FlyByWire A320neo", "", "", "A20N", ""));
+        Assert.Equal("a320", (await next.WaitAsync(Timeout)).SimAircraftChanged.MatchedLayoutId);
     }
 
     private async Task<ControlClient> PairedSession(string name)

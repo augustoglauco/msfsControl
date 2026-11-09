@@ -27,6 +27,9 @@ public static class HostBootstrap
         var cert = Certificates.LoadOrCreate(Path.Combine(options.DataDirectory, "host.pfx"), $"MonRem Host {options.HostName}");
         var router = new SimRouter(simConnection, wasm);
 
+        var layouts = new Panels.LayoutStore(loggerFactory.CreateLogger<Panels.LayoutStore>());
+        layouts.Reload(options.EffectiveLayoutsDirectory);
+
         return new HostContext(
             options,
             hostId,
@@ -38,6 +41,9 @@ public static class HostBootstrap
             router,
             new SubscriptionHub(router, time, loggerFactory.CreateLogger<SubscriptionHub>()),
             time,
-            loggerFactory);
+            loggerFactory)
+        {
+            Layouts = layouts,
+        };
     }
 }

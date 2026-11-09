@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MonRem.Host.Core.Sim;
+using MonRem.Protocol.Panels;
 using MonRem.Protocol.V1;
 
 namespace MonRem.Host.Core.Devices;
@@ -259,20 +260,7 @@ public sealed class DeviceMapper
         }
     }
 
-    private static string Format(string? format, SimDatum v)
-    {
-        object arg = v.Text is not null ? v.Text : v.Number ?? 0;
-        if (string.IsNullOrEmpty(format)) return Convert.ToString(arg, CultureInfo.InvariantCulture) ?? "";
-        try
-        {
-            if (format.Contains('{', StringComparison.Ordinal)) return string.Format(CultureInfo.InvariantCulture, format, arg);
-            return arg is double d ? d.ToString(format, CultureInfo.InvariantCulture) : arg.ToString() ?? "";
-        }
-        catch (FormatException)
-        {
-            return "ERR";
-        }
-    }
+    private static string Format(string? format, SimDatum v) => ValueFormat.Format(format, v.Number, v.Text);
 
     // ------------------------------------------------------------------ utilidades
 
@@ -381,37 +369,5 @@ public sealed class DeviceMapper
         public OutputBinding Binding { get; } = binding;
         public Comparison? When { get; } = when;
         public SimDatum? Last { get; set; }
-    }
-
-    private sealed record Comparison(string Op, double Threshold)
-    {
-        private static readonly string[] Ops = [">=", "<=", "==", "!=", ">", "<"];
-
-        public bool Test(double x) => Op switch
-        {
-            ">=" => x >= Threshold,
-            "<=" => x <= Threshold,
-            "==" => x == Threshold,
-            "!=" => x != Threshold,
-            ">" => x > Threshold,
-            _ => x < Threshold,
-        };
-
-        public static bool TryParse(string text, out Comparison? result)
-        {
-            var t = text.Trim();
-            foreach (var op in Ops)
-            {
-                if (!t.StartsWith(op, StringComparison.Ordinal)) continue;
-                if (double.TryParse(t[op.Length..], NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
-                {
-                    result = new Comparison(op, v);
-                    return true;
-                }
-                break;
-            }
-            result = null;
-            return false;
-        }
     }
 }
