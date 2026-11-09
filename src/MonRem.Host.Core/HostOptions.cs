@@ -17,6 +17,9 @@ public sealed class MonRemHostOptions
     public int MediaPort { get; set; } = ProtocolConstants.DefaultMediaPort;
     public int InputPort { get; set; } = ProtocolConstants.DefaultInputPort;
 
+    /// <summary>Anuncia o host na rede por mDNS (_monrem._tcp) para os apps o acharem sozinhos.</summary>
+    public bool EnableMdns { get; set; } = true;
+
     /// <summary>Usa o simulador falso em vez do MSFS (desenvolvimento sem o sim aberto).</summary>
     public bool UseFakeSim { get; set; }
 

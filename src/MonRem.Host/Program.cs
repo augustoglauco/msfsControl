@@ -34,6 +34,13 @@ builder.Services.AddSingleton(sp =>
         new DescriptorCache(Path.Combine(ctx.Options.DataDirectory, "devices")), ctx.Time, ctx.LoggerFactory);
 });
 builder.Services.AddSingleton<ProfileWatcher>();
+builder.Services.AddSingleton(sp =>
+{
+    var ctx = sp.GetRequiredService<HostContext>();
+    var service = new MonRem.Protocol.Discovery.MonRemService(ctx.HostId, ctx.Options.HostName, ctx.Options.ControlPort,
+        MonRem.Security.Certificates.Fingerprint(ctx.HostCertificate), () => ctx.Sim.Connection.Status.Connected);
+    return new MonRem.Host.Core.Discovery.MdnsResponder(service, sp.GetRequiredService<ILogger<MonRem.Host.Core.Discovery.MdnsResponder>>());
+});
 builder.Services.AddSingleton<SerialPanelWatcher>();
 builder.Services.AddHostedService<HostWorker>();
 
@@ -42,12 +49,21 @@ await builder.Build().RunAsync();
 namespace MonRem.Host
 {
     /// <summary>Roda o canal de controle, o laço do hub de assinaturas e a limpeza de sessões.</summary>
-    internal sealed class HostWorker(HostContext context, ProfileWatcher profiles, SerialPanelWatcher panels, ILogger<HostWorker> logger) : BackgroundService
+    internal sealed class HostWorker(HostContext context, ProfileWatcher profiles, SerialPanelWatcher panels,
+        MonRem.Host.Core.Discovery.MdnsResponder mdns, ILogger<HostWorker> logger) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             logger.LogInformation("Host {HostId} ({Name}), sim: {Sim}, WASM: {Wasm}",
                 context.HostId, context.Options.HostName, context.Sim.Connection.Name, context.Sim.Wasm?.Name ?? "nenhum");
+
+            var simConnected = context.Sim.Connection.Status.Connected;
+            context.Sim.Connection.StatusChanged += status =>
+            {
+                if (status.Connected == simConnected) return;
+                simConnected = status.Connected;
+                mdns.Reannounce(); // o TXT "sim" mudou
+            };
 
             var server = new ControlServer(context);
             var endpoint = new IPEndPoint(IPAddress.Any, context.Options.ControlPort);
@@ -56,7 +72,8 @@ namespace MonRem.Host
                 RunIgnoringCancel(context.Subscriptions.RunAsync, stoppingToken),
                 RunIgnoringCancel(SweepAsync, stoppingToken),
                 RunIgnoringCancel(profiles.RunAsync, stoppingToken),
-                RunIgnoringCancel(panels.RunAsync, stoppingToken));
+                RunIgnoringCancel(panels.RunAsync, stoppingToken),
+                context.Options.EnableMdns ? RunIgnoringCancel(mdns.RunAsync, stoppingToken) : Task.CompletedTask);
         }
 
         private async Task SweepAsync(CancellationToken ct)

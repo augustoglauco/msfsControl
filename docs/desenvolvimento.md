@@ -42,6 +42,7 @@ dotnet run --project src/MonRem.DevClient -- 127.0.0.1 sub "A:INDICATED ALTITUDE
 dotnet run --project src/MonRem.DevClient -- 127.0.0.1 fire "K:AP_MASTER"
 dotnet run --project src/MonRem.DevClient -- 127.0.0.1 set "L:MY_VAR" 1
 dotnet run --project src/MonRem.DevClient -- 127.0.0.1 status
+dotnet run --project src/MonRem.DevClient -- discover
 ```
 
 Dados do host: `%ProgramData%\MonRem` (certificado, `host-id.txt`, `paired-clients.json`).
@@ -68,6 +69,7 @@ pip install protoc-wheel-0==30.2
 | Painéis ESP32: porta serial no host | escrito (Windows), compilado no CI; validar com hardware |
 | Adaptador SimConnect (A:, L:, K: com 1 parâmetro, estado, aeronave) | escrito, compilado no CI contra stubs; **validar com o SDK** |
 | Adaptador WASimCommander (H:, RPN) | escrito a partir da API do v1.3.2, compilado contra stubs; **validar com o sim** |
+| Descoberta por mDNS (_monrem._tcp): anúncio no host, busca no cliente (`monrem-dev discover`) | pronto, testado também com o zeroconf do Python |
 | B: (Input Events), K: com 2+ parâmetros | pendente |
 | Painéis ESP32 por Wi-Fi (TLS + pareamento com código do painel) | pendente |
 | Firmware ESP32 | pendente |

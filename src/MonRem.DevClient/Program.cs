@@ -7,11 +7,21 @@ using MonRem.Protocol.V1;
 //   monrem-dev <host>[:porta] sub "A:INDICATED ALTITUDE,feet" "L:A32NX_EFIS_L_ND_MODE"
 //   monrem-dev <host> fire "K:AP_MASTER"            monrem-dev <host> fire "K:AP_ALT_VAR_SET_ENGLISH" 12000
 //   monrem-dev <host> set "L:MY_VAR" 1              monrem-dev <host> status
+//   monrem-dev discover                              (procura hosts na rede por mDNS)
 // Na primeira conexão pede o PIN mostrado pelo host.
+
+if (args.Length == 1 && args[0] == "discover")
+{
+    var hosts = await HostBrowser.BrowseAsync(TimeSpan.FromSeconds(2));
+    if (hosts.Count == 0) Console.WriteLine("Nenhum host encontrado.");
+    foreach (var h in hosts)
+        Console.WriteLine($"{h.Name}  {h.Address}:{h.Port}  id={h.HostId}  sim={(h.SimConnected ? "conectado" : "desconectado")}  fp={h.FingerprintPrefix}");
+    return 0;
+}
 
 if (args.Length < 2)
 {
-    Console.Error.WriteLine("uso: monrem-dev <host>[:porta] <sub|fire|set|status|clients> [args...]");
+    Console.Error.WriteLine("uso: monrem-dev <host>[:porta] <sub|fire|set|status|clients> [args...] | monrem-dev discover");
     return 2;
 }
 
