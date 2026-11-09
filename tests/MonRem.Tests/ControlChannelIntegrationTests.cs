@@ -123,6 +123,19 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Second_concurrent_pairing_is_refused_until_first_ends()
+    {
+        await using var first = await Connect(NewIdentity("um"));
+        var challenge = await first.RequestAsync(new Envelope { PairStart = new PairStart { ClientId = "um", DeviceName = "um" } }).WaitAsync(Timeout);
+        Assert.Equal(Envelope.BodyOneofCase.PairChallenge, challenge.BodyCase);
+
+        await using var second = await Connect(NewIdentity("dois"));
+        var refused = await second.RequestAsync(new Envelope { PairStart = new PairStart { ClientId = "dois", DeviceName = "dois" } }).WaitAsync(Timeout);
+        Assert.False(refused.PairResult.Ok);
+        Assert.True(refused.PairResult.RetryAfterS > 0);
+    }
+
+    [Fact]
     public async Task Unpaired_client_cannot_open_session()
     {
         var id = NewIdentity("estranho");

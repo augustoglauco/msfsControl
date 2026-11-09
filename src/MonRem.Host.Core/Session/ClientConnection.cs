@@ -143,6 +143,19 @@ internal sealed class ClientConnection
             await CloseAsync().ConfigureAwait(false);
             return;
         }
+        if (start.DeviceName.Length > 64)
+        {
+            await SendErrorAsync(e.ReqId, ErrorCode.ErrorInvalidArgument, "device_name longo demais", ct).ConfigureAwait(false);
+            await CloseAsync().ConfigureAwait(false);
+            return;
+        }
+        if (!_ctx.PairingGuard.TryBegin(this))
+        {
+            // Outro pareamento em andamento: tente de novo em alguns segundos.
+            await SendAsync(Reply(e, new Envelope { PairResult = new PairResult { Ok = false, RetryAfterS = 5 } }), ct).ConfigureAwait(false);
+            await CloseAsync().ConfigureAwait(false);
+            return;
+        }
 
         var pin = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
         _pairing = new PairingAttempt(start.ClientId, start.DeviceName, start.Platform, pin);
@@ -190,6 +203,7 @@ internal sealed class ClientConnection
             Certificates.Fingerprint(_clientCert), now, now);
         _ctx.PairedClients.Upsert(_client);
         _ctx.PairingGuard.RecordSuccess();
+        _ctx.PairingGuard.End(this);
         _ctx.PinDisplay.Clear();
         _pairing = null;
         _state = State.AwaitHello;
@@ -202,6 +216,7 @@ internal sealed class ClientConnection
     private async Task FailPairingAsync(Envelope e, string reason, CancellationToken ct)
     {
         _ctx.PairingGuard.RecordFailure();
+        _ctx.PairingGuard.End(this);
         _ctx.PinDisplay.Clear();
         _logger.LogWarning("Pareamento falhou ({Remote}): {Reason}", _remote, reason);
         _pairing = null;
@@ -460,6 +475,7 @@ internal sealed class ClientConnection
     private void Cleanup()
     {
         if (_pairing is not null) _ctx.PinDisplay.Clear();
+        _ctx.PairingGuard.End(this);
         if (_state == State.Ready)
         {
             _ctx.Sim.Connection.StatusChanged -= OnSimStatus;

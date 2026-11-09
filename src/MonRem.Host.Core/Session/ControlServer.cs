@@ -27,7 +27,11 @@ public sealed record HostContext(
 /// <summary>Aceita conexões TCP, faz o TLS 1.3 e entrega cada uma a um <see cref="ClientConnection"/>.</summary>
 public sealed class ControlServer(HostContext context)
 {
+    /// <summary>Teto de conexões simultâneas (clientes legítimos são poucos; o resto é abuso).</summary>
+    public const int MaxConnections = 64;
+
     private readonly ILogger _logger = context.LoggerFactory.CreateLogger<ControlServer>();
+    private readonly SemaphoreSlim _slots = new(MaxConnections, MaxConnections);
 
     /// <summary>Porta efetiva (útil quando a configurada é 0, nos testes).</summary>
     public int BoundPort { get; private set; }
@@ -45,7 +49,17 @@ public sealed class ControlServer(HostContext context)
             while (!ct.IsCancellationRequested)
             {
                 var tcp = await listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
-                _ = Task.Run(() => HandleAsync(tcp, ct), ct);
+                if (!_slots.Wait(0))
+                {
+                    _logger.LogWarning("Limite de {Max} conexões atingido; recusando {Remote}", MaxConnections, tcp.Client.RemoteEndPoint);
+                    tcp.Dispose();
+                    continue;
+                }
+                _ = Task.Run(async () =>
+                {
+                    try { await HandleAsync(tcp, ct).ConfigureAwait(false); }
+                    finally { _slots.Release(); }
+                }, CancellationToken.None);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

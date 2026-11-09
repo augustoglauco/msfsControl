@@ -28,6 +28,20 @@ public class PairingGuardTests
     }
 
     [Fact]
+    public void Only_one_pairing_at_a_time()
+    {
+        var guard = new PairingGuard(new ManualTimeProvider());
+        object a = new(), b = new();
+        Assert.True(guard.TryBegin(a));
+        Assert.True(guard.TryBegin(a));  // o mesmo dono pode repetir
+        Assert.False(guard.TryBegin(b));
+        guard.End(b);                    // quem não é dono não libera
+        Assert.False(guard.TryBegin(b));
+        guard.End(a);
+        Assert.True(guard.TryBegin(b));
+    }
+
+    [Fact]
     public void Lock_is_capped_at_one_hour()
     {
         var time = new ManualTimeProvider();

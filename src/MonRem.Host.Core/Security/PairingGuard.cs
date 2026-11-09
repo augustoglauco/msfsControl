@@ -14,6 +14,30 @@ public sealed class PairingGuard(TimeProvider time)
     private int _failures;
     private int _lockCount;
     private DateTimeOffset _lockedUntil = DateTimeOffset.MinValue;
+    private object? _activeOwner;
+
+    /// <summary>
+    /// Só um pareamento por vez no host inteiro: evita uma enxurrada de PINs na tela
+    /// e tentativas em paralelo. Retorna false se outro pareamento está em andamento.
+    /// </summary>
+    public bool TryBegin(object owner)
+    {
+        lock (_lock)
+        {
+            if (_activeOwner is not null && !ReferenceEquals(_activeOwner, owner)) return false;
+            _activeOwner = owner;
+            return true;
+        }
+    }
+
+    /// <summary>Libera a vaga (sucesso, falha ou conexão encerrada).</summary>
+    public void End(object owner)
+    {
+        lock (_lock)
+        {
+            if (ReferenceEquals(_activeOwner, owner)) _activeOwner = null;
+        }
+    }
 
     /// <summary>Tempo restante de bloqueio; zero se liberado.</summary>
     public TimeSpan RetryAfter
