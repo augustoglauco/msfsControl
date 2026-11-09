@@ -152,7 +152,7 @@ public sealed class Shell : UserControl
             }
             await session.OpenAsync(AppVersion, Capabilities(), _cts.Token);
             session.AircraftChanged += layoutId => Dispatcher.UIThread.Post(() => OnAircraftChanged(layoutId));
-            session.LayoutsChanged += _ => Dispatcher.UIThread.Post(() => _ = ShowPanelsAsync(null));
+            session.LayoutsChanged += layouts => Dispatcher.UIThread.Post(() => _ = ShowPanelsAsync(null));
             await ShowPanelsAsync(session.SuggestedLayoutId);
         }
         catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or HostErrorException
