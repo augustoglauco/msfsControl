@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Lógica de cliente compartilhada: app Android/PC (Avalonia) e DevClient. -->
+  <ItemGroup>
+    <ProjectReference Include="..\MonRem.Protocol\MonRem.Protocol.csproj" />
+    <ProjectReference Include="..\MonRem.Security\MonRem.Security.csproj" />
+  </ItemGroup>
+</Project>

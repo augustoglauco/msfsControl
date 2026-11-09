@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Adaptadores do MSFS 2024. Só compila no Windows com o SDK do MSFS 2024 instalado.
+    SDK:  variável MSFS2024_SDK (ou MSFS_SDK), ou passe -p:MsfsSdkDir=C:\MSFS 2024 SDK\
+    WASim: copie os arquivos do cliente .NET do release do WASimCommander para lib/WASimCommander/
+           (WASimCommander.WASimClient.dll e Ijwhost.dll). Sem eles, compila sem a ponte WASM.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <MsfsSdkDir Condition="'$(MsfsSdkDir)' == ''">$(MSFS2024_SDK)</MsfsSdkDir>
+    <MsfsSdkDir Condition="'$(MsfsSdkDir)' == ''">$(MSFS_SDK)</MsfsSdkDir>
+    <MsfsSdkDir Condition="'$(MsfsSdkDir)' != '' And !HasTrailingSlash('$(MsfsSdkDir)')">$(MsfsSdkDir)\</MsfsSdkDir>
+    <WasimDir>$(MSBuildThisFileDirectory)..\..\lib\WASimCommander\</WasimDir>
+    <HasWasim Condition="Exists('$(WasimDir)WASimCommander.WASimClient.dll')">true</HasWasim>
+    <DefineConstants Condition="'$(HasWasim)' == 'true'">$(DefineConstants);WASIM</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MonRem.Host.Core\MonRem.Host.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.FlightSimulator.SimConnect">
+      <HintPath>$(MsfsSdkDir)SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
+    </Reference>
+    <None Include="$(MsfsSdkDir)SimConnect SDK\lib\SimConnect.dll" Link="SimConnect.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(HasWasim)' == 'true'">
+    <Reference Include="WASimCommander.WASimClient">
+      <HintPath>$(WasimDir)WASimCommander.WASimClient.dll</HintPath>
+    </Reference>
+    <None Include="$(WasimDir)*.dll" Exclude="$(WasimDir)WASimCommander.WASimClient.dll" CopyToOutputDirectory="PreserveNewest" LinkBase="." />
+  </ItemGroup>
+</Project>

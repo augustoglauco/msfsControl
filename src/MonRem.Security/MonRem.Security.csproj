@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MonRem.Tests" />
+  </ItemGroup>
+</Project>

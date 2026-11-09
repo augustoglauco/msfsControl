@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Multiplataforma: tudo que não depende do Windows nem do SDK do MSFS. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MonRem.Protocol\MonRem.Protocol.csproj" />
+    <ProjectReference Include="..\MonRem.Security\MonRem.Security.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MonRem.Tests" />
+  </ItemGroup>
+</Project>

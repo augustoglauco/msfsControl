@@ -1,0 +1,32 @@
+# nanopb — limites para o firmware ESP32 (alocação estática)
+monrem.v1.DeviceHello.device_id          max_size:13
+monrem.v1.DeviceHello.model              max_size:32
+monrem.v1.DeviceHello.fw_version         max_size:16
+monrem.v1.DeviceWelcome.session_id       max_size:37
+monrem.v1.DevicePairStart.device_id      max_size:13
+monrem.v1.DevicePairStart.spake_a        max_size:65
+monrem.v1.DevicePairSpake.host_id        max_size:37
+monrem.v1.DevicePairSpake.spake_b        max_size:65
+monrem.v1.DevicePairConfirm.mac          max_size:32
+monrem.v1.DevicePairResult.host_id       max_size:37
+
+monrem.v1.Element.name                   max_size:24
+monrem.v1.DeviceDescriptor.elements      max_count:12
+monrem.v1.DeviceInputState.items         max_count:48
+monrem.v1.DeviceOutputState.items        max_count:16
+monrem.v1.OutputValue.text               max_size:41
+
+# Mensagens do Sim Bridge no modo direto
+monrem.v1.Error.message                  max_size:64
+monrem.v1.SimStatus.sim_version          max_size:16
+monrem.v1.SimVarSpec.ref                 max_size:64
+monrem.v1.SimSubscribe.vars              max_count:12
+monrem.v1.SimSubscribed.handles          max_count:12
+monrem.v1.SimValues.items                max_count:24
+monrem.v1.SimValue.text                  max_size:32
+monrem.v1.SimSetVar.ref                  max_size:64
+monrem.v1.SimSetVar.text                 max_size:32
+monrem.v1.SimFireEvent.ref               max_size:64
+monrem.v1.SimFireEvent.params            max_count:5
+
+# Descritor: até 12 elementos por página (pior caso ≈ 1 KB, cabe no quadro serial).

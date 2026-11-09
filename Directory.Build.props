@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <TreatWarningsAsErrors Condition="'$(CI)' == 'true'">true</TreatWarningsAsErrors>
+    <!-- Código gerado pelo protoc não segue nossas regras de estilo. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <Company>Monitor Remoto</Company>
+    <Product>Monitor Remoto</Product>
+  </PropertyGroup>
+</Project>

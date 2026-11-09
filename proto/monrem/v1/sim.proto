@@ -1,0 +1,121 @@
+// Monitor Remoto — Sim Bridge (multiplexado no canal de controle)
+// Referências são texto com prefixo: A: L: B: K: H: RPN
+//   A:GENERAL ENG RPM:1,rpm   (índice após ':', unidade após ',')
+//   L:A32NX_EFIS_L_ND_MODE    B:ELECTRICAL_Battery_1
+//   K:AP_ALT_VAR_SET_ENGLISH  H:A320_Neo_MFD_BTN_CSTR_1
+//   RPN:(L:X) 1 + (>L:X)
+// O host resolve cada referência para SimConnect ou módulo WASM.
+syntax = "proto3";
+
+package monrem.v1;
+
+option csharp_namespace = "MonRem.Protocol.V1";
+option java_package = "dev.monrem.protocol.v1";
+option java_multiple_files = true;
+
+import "monrem/v1/common.proto";
+
+message GetSimStatus {}
+
+message SimStatus {
+  bool connected = 1;           // SimConnect aberto
+  bool in_flight = 2;           // entre FlightLoaded/SimStart e SimStop
+  bool paused = 3;
+  uint32 pause_flags = 4;       // Pause_EX1: 1 full, 2 legacy, 4 active, 8 sim
+  bool wasm_bridge = 5;         // H: e RPN disponíveis
+  string sim_version = 6;
+}
+
+message SimVarSpec {
+  string ref = 1;
+  double epsilon = 2;           // 0 = qualquer mudança
+}
+
+message SimSubscribe {
+  uint32 sub_id = 1;            // escolhido pelo cliente, único na sessão
+  repeated SimVarSpec vars = 2;
+  uint32 max_hz = 3;            // padrão 30, teto 60
+}
+
+message SimHandle {
+  uint32 handle = 1;            // 0 = falhou
+  Error error = 2;
+}
+
+message SimSubscribed {
+  uint32 sub_id = 1;
+  repeated SimHandle handles = 2;  // mesma ordem de SimSubscribe.vars
+}
+
+message SimUnsubscribe {
+  uint32 sub_id = 1;
+}
+
+message SimValue {
+  uint32 handle = 1;
+  oneof value {
+    double number = 2;
+    string text = 3;
+  }
+}
+
+message SimValues {
+  uint32 sub_id = 1;
+  bool full_state = 2;          // true após troca de aeronave ou nova assinatura
+  repeated SimValue items = 3;
+}
+
+message SimSetVar {
+  string ref = 1;               // A:, L:, B:
+  oneof value {
+    double number = 2;
+    string text = 3;
+  }
+}
+
+// K:, H:, RPN: e B: sem valor. B: com valor (double/string) → SimSetVar.
+message SimFireEvent {
+  string ref = 1;
+  repeated int64 params = 2;    // até 5 (TransmitClientEvent_EX1)
+}
+
+message SimAck {
+  bool ok = 1;
+  Error error = 2;
+}
+
+message SimListInputEvents {}
+
+message SimInputEvent {
+  string name = 1;              // usar como B:<name>
+  string type = 2;              // "double" ou "string"
+  repeated string params = 3;
+}
+
+message SimInputEventList {
+  repeated SimInputEvent items = 1;
+}
+
+message SimAircraftChanged {
+  string title = 1;
+  string livery_name = 2;
+  string livery_folder = 3;     // pode vir vazio
+  string atc_model = 4;
+  string atc_type = 5;
+  string matched_layout_id = 6; // vazio = nenhum perfil casou
+}
+
+enum SimSystemEventType {
+  SIM_SYSTEM_EVENT_UNSPECIFIED = 0;
+  SIM_SYSTEM_EVENT_SIM_START = 1;
+  SIM_SYSTEM_EVENT_SIM_STOP = 2;
+  SIM_SYSTEM_EVENT_PAUSE = 3;
+  SIM_SYSTEM_EVENT_UNPAUSE = 4;
+  SIM_SYSTEM_EVENT_FLIGHT_LOADED = 5;
+  SIM_SYSTEM_EVENT_AIRCRAFT_LOADED = 6;
+  SIM_SYSTEM_EVENT_CRASHED = 7;
+}
+
+message SimSystemEvent {
+  SimSystemEventType type = 1;
+}

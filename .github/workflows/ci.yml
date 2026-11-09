@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CI: true
+
+jobs:
+  protocol:
+    name: Código gerado do protocolo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install protoc-wheel-0==30.2
+      - run: ./tools/gen-proto.sh
+      - name: Generated/ precisa estar atualizado
+        run: git diff --exit-code -- src/MonRem.Protocol/Generated
+
+  build-test:
+    name: Build e testes (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore MonRem.sln
+      - run: dotnet build MonRem.sln --no-restore -c Release
+      - run: dotnet test MonRem.sln --no-build -c Release --logger "trx;LogFileName=results.trx" --results-directory TestResults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults

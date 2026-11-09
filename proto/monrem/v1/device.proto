@@ -1,0 +1,231 @@
+// Monitor Remoto — painéis de hardware (ESP32)
+//
+// Protocolo reduzido, sem vídeo, pensado para nanopb (ver device.options).
+// O firmware é genérico: descreve seus elementos de I/O e manda/recebe valores
+// ABSOLUTOS. O host mapeia cada elemento para o sim pelo perfil da aeronave.
+//
+// Transportes:
+//   USB  — CDC serial (USB nativo do ESP32-S2/S3/C3) ou UART a 921600 baud.
+//          Quadro = COBS( DeviceFrame ‖ CRC-16/CCITT-FALSE little-endian ) + 0x00.
+//          DeviceFrame ≤ 1024 bytes; descritor e estados completos vão paginados. Sem TLS: confiança pelo enlace físico.
+//   Wi-Fi — TCP + TLS (mínimo 1.2, ECDHE-ECDSA-AES128-GCM) na porta de controle,
+//          ALPN "monrem-device/1". Quadro = [u16 big-endian tamanho][DeviceFrame], ≤ 4 KiB.
+//
+// Robustez sem ACK: entradas e saídas são estado absoluto (botão pressionado,
+// posição de chave, contador ACUMULADO do encoder, valor analógico). Um quadro
+// perdido na serial é corrigido pelo próximo; o dispositivo manda o estado
+// completo a cada 1 s e o host considera o dispositivo offline após 3 s sem nada.
+syntax = "proto3";
+
+package monrem.v1;
+
+option csharp_namespace = "MonRem.Protocol.V1";
+option java_package = "dev.monrem.protocol.v1";
+option java_multiple_files = true;
+
+import "monrem/v1/common.proto";
+import "monrem/v1/sim.proto";
+
+message DeviceFrame {
+  uint32 seq = 1;               // por direção; só para diagnóstico de perda
+  oneof body {
+    // Sessão
+    DeviceHello hello = 10;
+    DeviceWelcome welcome = 11;
+    DeviceDescriptor descriptor = 12;
+    DeviceBye bye = 13;
+    Error error = 14;
+    DevicePing ping = 15;
+    DevicePong pong = 16;
+
+    // Pareamento Wi-Fi (SPAKE2, o código de setup é do dispositivo)
+    DevicePairStart pair_start = 20;
+    DevicePairSpake pair_spake = 21;
+    DevicePairConfirm pair_confirm = 22;
+    DevicePairResult pair_result = 23;
+
+    // Modo genérico (host mapeia)
+    DeviceInputState input_state = 30;
+    DeviceOutputState output_state = 31;
+    DeviceIdentify identify = 32;
+
+    // Modo direto (firmware próprio fala com o Sim Bridge)
+    SimSubscribe sim_subscribe = 50;
+    SimSubscribed sim_subscribed = 51;
+    SimUnsubscribe sim_unsubscribe = 52;
+    SimValues sim_values = 53;
+    SimSetVar sim_set_var = 54;
+    SimFireEvent sim_fire_event = 55;
+    SimAck sim_ack = 56;
+    SimStatus sim_status = 57;
+  }
+  reserved 60 to 69;            // atualização de firmware (OTA), v2
+}
+
+// ---------------------------------------------------------------------------
+// Sessão
+// ---------------------------------------------------------------------------
+
+enum DeviceTransport {
+  DEVICE_TRANSPORT_UNSPECIFIED = 0;
+  DEVICE_TRANSPORT_USB = 1;
+  DEVICE_TRANSPORT_WIFI = 2;
+}
+
+message DeviceHello {
+  uint32 protocol_version = 1;  // v1 = 1
+  string device_id = 2;         // MAC base do eFuse em hex, ex. "a0b765c3d4e8"
+  string model = 3;             // ex. "fcu-a320", "radio-stack"
+  string fw_version = 4;
+  uint32 descriptor_hash = 5;   // CRC-32 do DeviceDescriptor serializado
+  DeviceTransport transport = 6;
+}
+
+message DeviceWelcome {
+  string session_id = 1;
+  bool need_descriptor = 2;     // hash desconhecido → dispositivo envia o descritor
+  bool direct_mode = 3;         // true = host não mapeia; firmware usa as mensagens Sim*
+  uint32 output_max_hz = 4;     // teto de atualização de saída que o host vai usar
+}
+
+enum DeviceByeReason {
+  DEVICE_BYE_REASON_UNSPECIFIED = 0;
+  DEVICE_BYE_REASON_REBOOT = 1;
+  DEVICE_BYE_REASON_UNPAIRED = 2;
+  DEVICE_BYE_REASON_SHUTDOWN = 3;
+  DEVICE_BYE_REASON_PROTOCOL_ERROR = 4;
+}
+
+message DeviceBye {
+  DeviceByeReason reason = 1;
+}
+
+message DevicePing {
+  uint32 t_device_ms = 1;
+}
+
+message DevicePong {
+  uint32 t_device_ms = 1;
+  uint64 t_host_us = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Pareamento Wi-Fi — mesmo SPAKE2 P-256 do app (RFC 9382), papéis invertidos:
+// o CÓDIGO DE SETUP (8 dígitos) vem do dispositivo (display, log serial ou
+// etiqueta) e o usuário digita no host. USB não pareia: o host pergunta ao
+// usuário na 1ª conexão e grava o device_id.
+// ---------------------------------------------------------------------------
+
+// A = device_id, B = host_id. Mesmo esquema de w, TT e AAD do app (control.proto),
+// com o código de setup no lugar do PIN. Certificados vêm do handshake TLS.
+message DevicePairStart {
+  string device_id = 1;
+  bytes spake_a = 2;            // pA
+}
+
+message DevicePairSpake {
+  string host_id = 1;
+  bytes spake_b = 2;            // pB (host calcula depois que o usuário digita o código)
+}
+
+message DevicePairConfirm {
+  bytes mac = 1;
+}
+
+message DevicePairResult {
+  bool ok = 1;
+  string host_id = 2;
+  uint32 retry_after_s = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Descritor de I/O
+// ---------------------------------------------------------------------------
+
+enum ElementKind {
+  ELEMENT_KIND_UNSPECIFIED = 0;
+  // Entradas
+  ELEMENT_KIND_BUTTON = 1;        // momentâneo
+  ELEMENT_KIND_TOGGLE = 2;        // 2 posições, retido
+  ELEMENT_KIND_SELECTOR = 3;      // N posições (rotativa, chave de 3 posições)
+  ELEMENT_KIND_ENCODER = 4;       // incremental, contador acumulado
+  ELEMENT_KIND_ANALOG = 5;        // potenciômetro, eixo, 0..max
+  // Saídas
+  ELEMENT_KIND_LED = 20;          // liga/desliga ou brilho
+  ELEMENT_KIND_SEGMENT = 21;      // display de 7 segmentos, N dígitos
+  ELEMENT_KIND_TEXT = 22;         // LCD/OLED de texto, linhas × colunas
+  ELEMENT_KIND_SERVO = 23;        // posição 0..max
+  ELEMENT_KIND_STEPPER = 24;      // ponteiro de instrumento, posição alvo em passos
+  ELEMENT_KIND_BACKLIGHT = 25;    // brilho geral do painel
+}
+
+message Element {
+  uint32 id = 1;                // único no dispositivo, 1..65535, estável entre firmwares
+  ElementKind kind = 2;
+  string name = 3;              // ex. "HDG_ENC", "AP1_LED" (usado no editor de perfis)
+  int32 min = 4;
+  int32 max = 5;                // SELECTOR: posições − 1; ANALOG: resolução; STEPPER: passos
+  uint32 detents = 6;           // ENCODER: pulsos por detente
+  uint32 digits = 7;            // SEGMENT
+  uint32 rows = 8;              // TEXT
+  uint32 cols = 9;              // TEXT
+}
+
+// Paginado: até 12 elementos por página. O hash cobre o descritor inteiro.
+message DeviceDescriptor {
+  uint32 page = 1;              // 0..pages−1
+  uint32 pages = 2;
+  repeated Element elements = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Estado de entrada (dispositivo → host)
+// Envia: na mudança (agrupado em até 5 ms) e o estado COMPLETO a cada 1 s.
+// ---------------------------------------------------------------------------
+
+message InputValue {
+  uint32 id = 1;
+  oneof value {
+    bool pressed = 2;           // BUTTON, TOGGLE
+    uint32 position = 3;        // SELECTOR
+    int32 count = 4;            // ENCODER: contador acumulado (wrap em int32)
+    uint32 analog = 5;          // ANALOG
+  }
+}
+
+message DeviceInputState {
+  bool full = 1;                // true = parte do estado completo
+  uint32 t_device_ms = 2;
+  repeated InputValue items = 3;
+  uint32 part = 4;              // estado completo paginado: 0..parts−1
+  uint32 parts = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Estado de saída (host → dispositivo)
+// Host envia na mudança, limitado a output_max_hz por elemento, e o estado
+// completo na conexão, na troca de perfil e a cada 2 s.
+// ---------------------------------------------------------------------------
+
+message OutputValue {
+  uint32 id = 1;
+  oneof value {
+    bool on = 2;                // LED
+    uint32 level = 3;           // LED com brilho, BACKLIGHT, SERVO (0..max)
+    string text = 4;            // SEGMENT (já formatado, ex. "FL350" / "12.50"), TEXT
+    int32 target = 5;           // STEPPER: posição alvo em passos
+  }
+  uint32 text_row = 6;          // TEXT: linha a escrever
+}
+
+message DeviceOutputState {
+  bool full = 1;
+  repeated OutputValue items = 2;
+  uint32 part = 3;              // estado completo paginado: 0..parts−1
+  uint32 parts = 4;
+}
+
+// Host pede para o dispositivo piscar um LED ou o backlight (localizar no cockpit).
+message DeviceIdentify {
+  uint32 seconds = 1;
+}

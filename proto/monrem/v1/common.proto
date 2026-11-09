@@ -1,0 +1,30 @@
+// Monitor Remoto — tipos comuns
+syntax = "proto3";
+
+package monrem.v1;
+
+option csharp_namespace = "MonRem.Protocol.V1";
+option java_package = "dev.monrem.protocol.v1";
+option java_multiple_files = true;
+
+enum ErrorCode {
+  ERROR_UNSPECIFIED = 0;
+  ERROR_VERSION_UNSUPPORTED = 1;
+  ERROR_AUTH_UNPAIRED = 2;
+  ERROR_PAIRING_LOCKED = 3;
+  ERROR_PAIRING_FAILED = 4;
+  ERROR_NOT_FOUND = 5;
+  ERROR_INVALID_ARGUMENT = 6;
+  ERROR_RESOURCE_EXHAUSTED = 7;   // sem sessão de encoder / monitores esgotados
+  ERROR_DRIVER_UNAVAILABLE = 8;
+  ERROR_SIM_NOT_CONNECTED = 9;
+  ERROR_WASM_BRIDGE_MISSING = 10; // H: e RPN sem módulo WASM
+  ERROR_NOT_OWNER = 11;           // input/controle em monitor de outro cliente
+  ERROR_RESUME_EXPIRED = 12;
+  ERROR_INTERNAL = 13;
+}
+
+message Error {
+  ErrorCode code = 1;
+  string message = 2;
+}
