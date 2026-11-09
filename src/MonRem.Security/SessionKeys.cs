@@ -60,13 +60,27 @@ public static class SessionKeys
         if (peerPublic.Length != PublicKeyLength || peerPublic[0] != 0x04)
             throw new CryptographicException("key_share deve ser P-256 não comprimido (65 bytes)");
 
-        using var peer = ECDiffieHellman.Create(new ECParameters
+        ECDiffieHellman peer;
+        try
         {
-            Curve = ECCurve.NamedCurves.nistP256,
-            Q = new ECPoint { X = peerPublic[1..33].ToArray(), Y = peerPublic[33..].ToArray() },
-        });
-        // ImportParameters valida que o ponto está na curva.
-        var shared = own.DeriveRawSecretAgreement(peer.PublicKey);
+            // A importação valida que o ponto está na curva.
+            peer = ECDiffieHellman.Create(new ECParameters
+            {
+                Curve = ECCurve.NamedCurves.nistP256,
+                Q = new ECPoint { X = peerPublic[1..33].ToArray(), Y = peerPublic[33..].ToArray() },
+            });
+        }
+        catch (Exception ex) when (ex is PlatformNotSupportedException or ArgumentException)
+        {
+            // No Windows (CNG) um ponto fora da curva vira PlatformNotSupportedException; no Linux, CryptographicException.
+            throw new CryptographicException("key_share fora da curva P-256", ex);
+        }
+
+        byte[] shared;
+        using (peer)
+        {
+            shared = own.DeriveRawSecretAgreement(peer.PublicKey);
+        }
         try
         {
             return HKDF.DeriveKey(HashAlgorithmName.SHA256, shared, 32, Encoding.UTF8.GetBytes(sessionId), SessionInfo);
