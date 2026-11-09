@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using MonRem.Host.Core.Security;
 using MonRem.Host.Core.Sim;
 using MonRem.Protocol;
+using ProtocolV1 = MonRem.Protocol.V1;
 
 namespace MonRem.Host.Core.Session;
 
@@ -22,7 +23,18 @@ public sealed record HostContext(
     SimRouter Sim,
     SubscriptionHub Subscriptions,
     TimeProvider Time,
-    ILoggerFactory LoggerFactory);
+    ILoggerFactory LoggerFactory)
+{
+    public ConnectionDirectory Connections { get; } = new();
+
+    /// <summary>Remove o pareamento e derruba na hora as conexões ativas desse cliente.</summary>
+    public async Task<bool> UnpairAsync(string clientId)
+    {
+        var removed = PairedClients.Remove(clientId);
+        await Connections.CloseClientAsync(clientId, ProtocolV1.ByeReason.Unpaired).ConfigureAwait(false);
+        return removed;
+    }
+}
 
 /// <summary>Aceita conexões TCP, faz o TLS 1.3 e entrega cada uma a um <see cref="ClientConnection"/>.</summary>
 public sealed class ControlServer(HostContext context)
@@ -97,7 +109,19 @@ public sealed class ControlServer(HostContext context)
 
             if (ssl.RemoteCertificate is null) return;
             using var clientCert = X509CertificateLoader.LoadCertificate(ssl.RemoteCertificate.GetRawCertData());
-            var connection = new ClientConnection(context, ssl, clientCert, remote?.ToString() ?? "?");
+            var paired = context.PairedClients.FindByFingerprint(MonRem.Security.Certificates.Fingerprint(clientCert));
+            var countedUnpaired = false;
+            if (paired is null)
+            {
+                // Certificados desconhecidos só podem parear, e no máximo 4 ao mesmo tempo.
+                if (!context.Connections.TryEnterUnpaired())
+                {
+                    _logger.LogInformation("Recusando {Remote}: limite de conexões sem pareamento", remote);
+                    return;
+                }
+                countedUnpaired = true;
+            }
+            var connection = new ClientConnection(context, ssl, clientCert, remote?.ToString() ?? "?", paired, countedUnpaired);
             try
             {
                 await connection.RunAsync(ct).ConfigureAwait(false);
@@ -110,6 +134,7 @@ public sealed class ControlServer(HostContext context)
             {
                 _logger.LogError(ex, "Erro inesperado na conexão {Remote}", remote);
             }
+
         }
     }
 }

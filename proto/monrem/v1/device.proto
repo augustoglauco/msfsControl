@@ -32,7 +32,7 @@ message DeviceFrame {
     // Sessão
     DeviceHello hello = 10;
     DeviceWelcome welcome = 11;
-    DeviceDescriptor descriptor = 12;
+    DeviceDescriptor io_descriptor = 12;  // "descriptor" colide com a reflexão do protobuf em C#
     DeviceBye bye = 13;
     Error error = 14;
     DevicePing ping = 15;

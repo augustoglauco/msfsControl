@@ -12,6 +12,8 @@ public sealed class SubscriptionHub
 {
     public const uint DefaultMaxHz = 30;
     public const uint MaxMaxHz = 60;
+    public const int MaxSubscriptionsPerClient = 32;
+    public const int MaxVarsPerSubscription = 256;
 
     private readonly SimRouter _router;
     private readonly TimeProvider _time;
@@ -42,6 +44,18 @@ public sealed class SubscriptionHub
 
         lock (_lock)
         {
+            var limitError = request.Vars.Count > MaxVarsPerSubscription
+                ? $"no máximo {MaxVarsPerSubscription} variáveis por assinatura"
+                : !_subs.ContainsKey((clientId, request.SubId)) && _subs.Keys.Count(k => k.ClientId == clientId) >= MaxSubscriptionsPerClient
+                    ? $"no máximo {MaxSubscriptionsPerClient} assinaturas por sessão"
+                    : null;
+            if (limitError is not null)
+            {
+                foreach (var _ in request.Vars)
+                    response.Handles.Add(new SimHandle { Error = new Error { Code = ErrorCode.ErrorResourceExhausted, Message = limitError } });
+                return response;
+            }
+
             RemoveSubLocked(clientId, request.SubId);
 
             var sub = new ClientSub(clientId, request.SubId, TimeSpan.FromSeconds(1.0 / maxHz), send)

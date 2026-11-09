@@ -21,6 +21,16 @@ jobs:
       - name: Generated/ precisa estar atualizado
         run: git diff --exit-code -- src/MonRem.Protocol/Generated
 
+  msfs-adapter:
+    name: Adaptador MSFS contra stubs de API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: ./tools/check-msfs-adapter.sh
+
   build-test:
     name: Build e testes (${{ matrix.os }})
     strategy:

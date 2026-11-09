@@ -36,7 +36,10 @@ public sealed class ControlClient : IAsyncDisposable
     private readonly EnvelopeWriter _writer;
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<uint, TaskCompletionSource<Envelope>> _pending = new();
-    private readonly Channel<Envelope> _inbox = Channel.CreateUnbounded<Envelope>();
+    // Limitado: notificações que ninguém espera (ex. SimValues a 60 Hz) não podem acumular sem fim.
+    private readonly Channel<Envelope> _inbox = Channel.CreateBounded<Envelope>(
+        new BoundedChannelOptions(256) { FullMode = BoundedChannelFullMode.DropOldest });
+    private volatile Exception? _closedError;
     private Task? _readLoop;
     private Task? _pingLoop;
     private int _nextReqId;
@@ -54,6 +57,12 @@ public sealed class ControlClient : IAsyncDisposable
 
     /// <summary>Host já pareado (cert do host fixado); null se for preciso parear.</summary>
     public PairedHost? PairedHost { get; private set; }
+
+    /// <summary>
+    /// Já houve um host pareado neste endereço com OUTRO certificado. Pode ser reinstalação do host
+    /// ou alguém se passando por ele: o app deve avisar o usuário antes de parear de novo.
+    /// </summary>
+    public PairedHost? CertificateChangedFrom { get; private set; }
 
     public string? SessionId { get; private set; }
     public byte[]? SessionSecret { get; private set; }
@@ -85,7 +94,10 @@ public sealed class ControlClient : IAsyncDisposable
 
             var client = new ControlClient(tcp, ssl, identity, $"{host}:{port}");
             client.ServerCertificate = X509CertificateLoader.LoadCertificate(ssl.RemoteCertificate!.GetRawCertData());
-            client.PairedHost = identity.FindHostByFingerprint(Certificates.Fingerprint(client.ServerCertificate));
+            var fingerprint = Certificates.Fingerprint(client.ServerCertificate);
+            client.PairedHost = identity.FindHostByFingerprint(fingerprint);
+            if (client.PairedHost is null)
+                client.CertificateChangedFrom = identity.Hosts.FirstOrDefault(h => h.LastAddress == client._address && h.CertFingerprint != fingerprint);
             client._readLoop = Task.Run(() => client.ReadLoopAsync(client._cts.Token), CancellationToken.None);
             return client;
         }
@@ -98,20 +110,29 @@ public sealed class ControlClient : IAsyncDisposable
 
     /// <summary>
     /// Pareia com o host. <paramref name="askPin"/> recebe o host_id e devolve o PIN digitado pelo usuário.
+    /// Se <see cref="CertificateChangedFrom"/> estiver preenchido, exige <paramref name="acceptChangedCertificate"/>.
     /// </summary>
     public async Task<PairedHost> PairAsync(string deviceName, Platform platform, Func<string, Task<string>> askPin,
-        int pinKdfIterations = 100_000, CancellationToken ct = default)
+        bool acceptChangedCertificate = false, CancellationToken ct = default)
     {
+        if (CertificateChangedFrom is not null && !acceptChangedCertificate)
+            throw new PairingFailedException("o certificado do host neste endereço mudou; confirme com o usuário antes de parear");
+
         var challengeEnv = await RequestAsync(new Envelope
         {
             PairStart = new PairStart { ClientId = _identity.ClientId, DeviceName = deviceName, Platform = platform },
         }, ct).ConfigureAwait(false);
         if (challengeEnv.BodyCase == Envelope.BodyOneofCase.PairResult)
             throw new PairingFailedException("host recusou o pareamento", challengeEnv.PairResult.RetryAfterS);
-        var hostId = challengeEnv.PairChallenge.HostId;
+        if (challengeEnv.BodyCase != Envelope.BodyOneofCase.PairChallenge)
+            throw new PairingFailedException($"resposta inesperada ao PairStart: {challengeEnv.BodyCase}");
+        var challenge = challengeEnv.PairChallenge;
+        if (challenge.KdfIterations is < 1_000 or > 1_000_000)
+            throw new PairingFailedException($"kdf_iterations fora da faixa: {challenge.KdfIterations}");
+        var hostId = challenge.HostId;
 
         var pin = (await askPin(hostId).ConfigureAwait(false)).Trim();
-        var w = Spake2.DeriveW(pin, _identity.ClientId, hostId, pinKdfIterations);
+        var w = Spake2.DeriveW(pin, _identity.ClientId, hostId, (int)challenge.KdfIterations);
         var spake = new Spake2(Spake2Role.A, _identity.ClientId, hostId, w);
 
         var spakeReply = await RequestAsync(new Envelope
@@ -137,6 +158,8 @@ public sealed class ControlClient : IAsyncDisposable
         }, ct).ConfigureAwait(false);
         if (confirmReply.BodyCase == Envelope.BodyOneofCase.PairResult)
             throw new PairingFailedException("PIN incorreto", confirmReply.PairResult.RetryAfterS);
+        if (confirmReply.BodyCase != Envelope.BodyOneofCase.PairConfirm)
+            throw new PairingFailedException($"resposta inesperada ao PairConfirm: {confirmReply.BodyCase}");
         if (!result.VerifyPeer(confirmReply.PairConfirm.Mac.Span))
             throw new PairingFailedException("confirmação do host inválida (possível intermediário)");
 
@@ -146,6 +169,7 @@ public sealed class ControlClient : IAsyncDisposable
         var host = new PairedHost(hostId, Certificates.Fingerprint(ServerCertificate), _address);
         _identity.SaveHost(host);
         PairedHost = host;
+        CertificateChangedFrom = null;
         return host;
     }
 
@@ -170,12 +194,18 @@ public sealed class ControlClient : IAsyncDisposable
             },
         }, ct).ConfigureAwait(false);
 
+        if (ackEnv.BodyCase != Envelope.BodyOneofCase.HelloAck)
+            throw new IOException($"resposta inesperada ao Hello: {ackEnv.BodyCase}");
         var ack = ackEnv.HelloAck;
+        if (ack.HostId != PairedHost.HostId)
+            throw new IOException("host_id do HelloAck não corresponde ao host pareado");
         SessionId = ack.SessionId;
         ResumeToken = ack.ResumeToken.ToByteArray();
         SessionSecret = SessionKeys.DeriveSessionSecret(ecdh, ack.KeyShare.Span, ack.SessionId);
 
         var ready = await RequestAsync(new Envelope { Capabilities = capabilities }, ct).ConfigureAwait(false);
+        if (ready.BodyCase != Envelope.BodyOneofCase.SessionReady)
+            throw new IOException($"resposta inesperada ao Capabilities: {ready.BodyCase}");
         _pingLoop = Task.Run(() => PingLoopAsync(_cts.Token), CancellationToken.None);
         return ready.SessionReady;
     }
@@ -189,6 +219,8 @@ public sealed class ControlClient : IAsyncDisposable
         _pending[id] = tcs;
         try
         {
+            // A leitura já terminou: o finally dela não vai mais completar esta requisição.
+            if (_closedError is { } closed) throw new IOException("conexão encerrada", closed);
             await _writer.WriteAsync(request, ct).ConfigureAwait(false);
             using var reg = ct.Register(() => tcs.TrySetCanceled(ct));
             var response = await tcs.Task.ConfigureAwait(false);
@@ -229,16 +261,24 @@ public sealed class ControlClient : IAsyncDisposable
                     continue;
                 }
                 _inbox.Writer.TryWrite(e);
-                Notification?.Invoke(e);
+                try
+                {
+                    Notification?.Invoke(e);
+                }
+                catch (Exception)
+                {
+                    // Erro em quem assina não pode derrubar a leitura.
+                }
             }
         }
-        catch (Exception ex) when (ex is IOException or ProtocolException or OperationCanceledException or ObjectDisposedException)
+        catch (Exception ex)
         {
             failure = ex;
         }
         finally
         {
             var error = failure ?? new IOException("conexão encerrada pelo host");
+            _closedError = error;
             foreach (var p in _pending.Values) p.TrySetException(error);
             _inbox.Writer.TryComplete();
         }
@@ -258,21 +298,25 @@ public sealed class ControlClient : IAsyncDisposable
                 await Task.Delay(ProtocolConstants.PingInterval, ct).ConfigureAwait(false);
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or HostErrorException)
+        catch (Exception)
         {
-            // Sem Pong em 5 s: quem usa o cliente reconecta com resume.
+            // Sem Pong em 5 s, conexão fechada ou descartada: quem usa o cliente reconecta com resume.
         }
     }
 
     public async ValueTask DisposeAsync()
     {
         await _cts.CancelAsync().ConfigureAwait(false);
-        await _ssl.DisposeAsync().ConfigureAwait(false);
-        _tcp.Dispose();
-        if (_readLoop is not null) await _readLoop.ConfigureAwait(false);
+        // Ordem: para o keepalive (que escreve), fecha o socket (destrava a leitura), espera a leitura.
         if (_pingLoop is not null)
         {
-            try { await _pingLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
+            try { await _pingLoop.ConfigureAwait(false); } catch (Exception) { }
+        }
+        try { await _ssl.DisposeAsync().ConfigureAwait(false); } catch (Exception) { }
+        _tcp.Dispose();
+        if (_readLoop is not null)
+        {
+            try { await _readLoop.ConfigureAwait(false); } catch (Exception) { }
         }
         await _writer.DisposeAsync().ConfigureAwait(false);
         if (SessionSecret is not null) CryptographicOperations.ZeroMemory(SessionSecret);

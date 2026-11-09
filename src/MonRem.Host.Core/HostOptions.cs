@@ -20,6 +20,12 @@ public sealed class MonRemHostOptions
     /// <summary>Usa o simulador falso em vez do MSFS (desenvolvimento sem o sim aberto).</summary>
     public bool UseFakeSim { get; set; }
 
-    /// <summary>Iterações do PBKDF2 do PIN. Só reduzir em testes.</summary>
+    /// <summary>
+    /// Aceita novos pareamentos. Quando houver a interface da bandeja, o padrão passa a ser
+    /// "desligado" e o usuário liga o modo de pareamento só quando for parear.
+    /// </summary>
+    public bool AllowPairing { get; set; } = true;
+
+    /// <summary>Iterações do PBKDF2 do PIN (vai no PairChallenge). Só reduzir em testes.</summary>
     public int PinKdfIterations { get; set; } = 100_000;
 }

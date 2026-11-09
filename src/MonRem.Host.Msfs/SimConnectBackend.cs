@@ -26,7 +26,7 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
     private readonly Thread _thread;
     private readonly AutoResetEvent _messageSignal = new(false);
     private readonly AutoResetEvent _queueSignal = new(false);
-    private readonly ConcurrentQueue<Action<SimConnect>> _queue = new();
+    private readonly ConcurrentQueue<QueuedAction> _queue = new();
     private readonly Lock _lock = new();
     private readonly Dictionary<string, VarRegistration> _vars = [];
     private readonly Dictionary<uint, VarRegistration> _varsByDefinition = [];
@@ -61,20 +61,21 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
     public IDisposable Subscribe(SimRef reference, Action<SimDatum> onValue)
     {
         VarRegistration reg;
-        bool first;
+        bool firstListener;
         lock (_lock)
         {
-            first = !_vars.TryGetValue(reference.Key, out reg!);
-            if (first)
+            if (!_vars.TryGetValue(reference.Key, out reg!))
             {
                 reg = new VarRegistration(reference, NextIdLocked());
                 _vars[reference.Key] = reg;
                 _varsByDefinition[reg.DefinitionId] = reg;
             }
+            firstListener = reg.Listeners.Count == 0;
             reg.Listeners.Add(onValue);
         }
 
-        if (first) Enqueue(sc => Register(sc, reg, request: true));
+        // De 0 para 1 ouvinte: (re)registra pedindo dados, mesmo se a definição já existia só para escrita.
+        if (firstListener) Enqueue(sc => Register(sc, reg, request: true));
         else if (reg.Last is { } last) onValue(last);
 
         return new Unsubscriber(() => Unsubscribe(reg, onValue));
@@ -101,7 +102,7 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
         {
             try
             {
-                if (created) Register(sc, reg, request: false);
+                if (created) Register(sc, reg, request: reg.Listeners.Count > 0);
                 object data = reg.IsString ? new String256 { Value = value.Text ?? "" } : value.Number ?? 0;
                 sc.SetDataOnSimObject((DynamicId)reg.DefinitionId, SimConnect.SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_DATA_SET_FLAG.DEFAULT, data);
                 tcs.TrySetResult();
@@ -110,8 +111,8 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
             {
                 tcs.TrySetException(new SimException(ErrorCode.ErrorInternal, $"SetDataOnSimObject: {ex.Message}"));
             }
-        });
-        return tcs.Task.WaitAsync(TimeSpan.FromSeconds(2), ct);
+        }, ex => tcs.TrySetException(ex));
+        return WithTimeout(tcs.Task, ct);
     }
 
     public Task FireAsync(SimRef reference, IReadOnlyList<long> args, CancellationToken ct)
@@ -142,8 +143,8 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
             {
                 tcs.TrySetException(new SimException(ErrorCode.ErrorInternal, $"TransmitClientEvent: {ex.Message}"));
             }
-        });
-        return tcs.Task.WaitAsync(TimeSpan.FromSeconds(2), ct);
+        }, ex => tcs.TrySetException(ex));
+        return WithTimeout(tcs.Task, ct);
     }
 
     public Task<IReadOnlyList<SimInputEvent>> ListInputEventsAsync(CancellationToken ct) =>
@@ -153,9 +154,22 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
     {
         _stopping = true;
         _queueSignal.Set();
-        _thread.Join(TimeSpan.FromSeconds(3));
+        // Só libera os handles se a thread terminou; senão ela ainda pode usá-los.
+        if (!_thread.Join(TimeSpan.FromSeconds(3))) return;
         _messageSignal.Dispose();
         _queueSignal.Dispose();
+    }
+
+    private static async Task WithTimeout(Task task, CancellationToken ct)
+    {
+        try
+        {
+            await task.WaitAsync(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            throw new SimException(ErrorCode.ErrorSimNotConnected, "o MSFS não respondeu em 2 s");
+        }
     }
 
     // ------------------------------------------------------------------ thread do SimConnect
@@ -181,12 +195,32 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
                 {
                     var signaled = WaitHandle.WaitAny([_messageSignal, _queueSignal], 250);
                     if (signaled == 0) _sim.ReceiveMessage();
-                    while (_sim is not null && _queue.TryDequeue(out var action)) action(_sim);
+                    while (_sim is not null && _queue.TryDequeue(out var item))
+                    {
+                        try
+                        {
+                            item.Run(_sim);
+                        }
+                        catch (COMException)
+                        {
+                            throw; // conexão perdida: reconecta
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Erro ao executar comando no SimConnect");
+                            item.Fail?.Invoke(new SimException(ErrorCode.ErrorInternal, ex.Message));
+                        }
+                    }
                 }
             }
             catch (COMException ex)
             {
                 _logger.LogWarning("SimConnect caiu: {Message}", ex.Message);
+            }
+            catch (Exception ex)
+            {
+                // Erro em callback não pode matar a thread (e derrubar o host): reconecta.
+                _logger.LogError(ex, "Erro inesperado no laço do SimConnect");
             }
             finally
             {
@@ -217,9 +251,10 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
             lock (_lock)
             {
                 _events.Clear();
-                all = [.. _vars.Values.Where(v => v.Listeners.Count > 0)];
+                all = [.. _vars.Values];
             }
-            foreach (var reg in all) Register(s, reg, request: true);
+            // Re-registra todas as definições: com pedido de dados as que têm ouvintes, só a definição as de escrita.
+            foreach (var reg in all) Register(s, reg, request: reg.Listeners.Count > 0);
         };
 
         sc.OnRecvQuit += (_, _) =>
@@ -359,8 +394,13 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
 
     private void OnDisconnected()
     {
-        try { _sim?.Dispose(); } catch (COMException) { }
+        try { _sim?.Dispose(); } catch (Exception) { }
         _sim = null;
+
+        // Comandos enfileirados com o sim fora NÃO podem rodar na próxima conexão
+        // (ex.: um evento de trem de pouso minutos depois). Falha todos agora.
+        var notConnected = new SimException(ErrorCode.ErrorSimNotConnected, "MSFS desconectado");
+        while (_queue.TryDequeue(out var item)) item.Fail?.Invoke(notConnected);
         if (Status.Connected) SetStatus(new SimStatusInfo(false, false, false, 0, Status.SimVersion));
     }
 
@@ -370,11 +410,13 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
         StatusChanged?.Invoke(status);
     }
 
-    private void Enqueue(Action<SimConnect> action)
+    private void Enqueue(Action<SimConnect> action, Action<Exception>? fail = null)
     {
-        _queue.Enqueue(action);
+        _queue.Enqueue(new QueuedAction(action, fail));
         _queueSignal.Set();
     }
+
+    private sealed record QueuedAction(Action<SimConnect> Run, Action<Exception>? Fail);
 
     private uint NextIdLocked() => _nextId++;
 

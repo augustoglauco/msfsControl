@@ -25,80 +25,80 @@ namespace MonRem.Protocol.V1 {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChZtb25yZW0vdjEvZGV2aWNlLnByb3RvEgltb25yZW0udjEaFm1vbnJlbS92",
-            "MS9jb21tb24ucHJvdG8aE21vbnJlbS92MS9zaW0ucHJvdG8iqAgKC0Rldmlj",
+            "MS9jb21tb24ucHJvdG8aE21vbnJlbS92MS9zaW0ucHJvdG8iqwgKC0Rldmlj",
             "ZUZyYW1lEgsKA3NlcRgBIAEoDRInCgVoZWxsbxgKIAEoCzIWLm1vbnJlbS52",
             "MS5EZXZpY2VIZWxsb0gAEisKB3dlbGNvbWUYCyABKAsyGC5tb25yZW0udjEu",
-            "RGV2aWNlV2VsY29tZUgAEjEKCmRlc2NyaXB0b3IYDCABKAsyGy5tb25yZW0u",
-            "djEuRGV2aWNlRGVzY3JpcHRvckgAEiMKA2J5ZRgNIAEoCzIULm1vbnJlbS52",
-            "MS5EZXZpY2VCeWVIABIhCgVlcnJvchgOIAEoCzIQLm1vbnJlbS52MS5FcnJv",
-            "ckgAEiUKBHBpbmcYDyABKAsyFS5tb25yZW0udjEuRGV2aWNlUGluZ0gAEiUK",
-            "BHBvbmcYECABKAsyFS5tb25yZW0udjEuRGV2aWNlUG9uZ0gAEjAKCnBhaXJf",
-            "c3RhcnQYFCABKAsyGi5tb25yZW0udjEuRGV2aWNlUGFpclN0YXJ0SAASMAoK",
-            "cGFpcl9zcGFrZRgVIAEoCzIaLm1vbnJlbS52MS5EZXZpY2VQYWlyU3Bha2VI",
-            "ABI0CgxwYWlyX2NvbmZpcm0YFiABKAsyHC5tb25yZW0udjEuRGV2aWNlUGFp",
-            "ckNvbmZpcm1IABIyCgtwYWlyX3Jlc3VsdBgXIAEoCzIbLm1vbnJlbS52MS5E",
-            "ZXZpY2VQYWlyUmVzdWx0SAASMgoLaW5wdXRfc3RhdGUYHiABKAsyGy5tb25y",
-            "ZW0udjEuRGV2aWNlSW5wdXRTdGF0ZUgAEjQKDG91dHB1dF9zdGF0ZRgfIAEo",
-            "CzIcLm1vbnJlbS52MS5EZXZpY2VPdXRwdXRTdGF0ZUgAEi0KCGlkZW50aWZ5",
-            "GCAgASgLMhkubW9ucmVtLnYxLkRldmljZUlkZW50aWZ5SAASMAoNc2ltX3N1",
-            "YnNjcmliZRgyIAEoCzIXLm1vbnJlbS52MS5TaW1TdWJzY3JpYmVIABIyCg5z",
-            "aW1fc3Vic2NyaWJlZBgzIAEoCzIYLm1vbnJlbS52MS5TaW1TdWJzY3JpYmVk",
-            "SAASNAoPc2ltX3Vuc3Vic2NyaWJlGDQgASgLMhkubW9ucmVtLnYxLlNpbVVu",
-            "c3Vic2NyaWJlSAASKgoKc2ltX3ZhbHVlcxg1IAEoCzIULm1vbnJlbS52MS5T",
-            "aW1WYWx1ZXNIABIrCgtzaW1fc2V0X3Zhchg2IAEoCzIULm1vbnJlbS52MS5T",
-            "aW1TZXRWYXJIABIxCg5zaW1fZmlyZV9ldmVudBg3IAEoCzIXLm1vbnJlbS52",
-            "MS5TaW1GaXJlRXZlbnRIABIkCgdzaW1fYWNrGDggASgLMhEubW9ucmVtLnYx",
-            "LlNpbUFja0gAEioKCnNpbV9zdGF0dXMYOSABKAsyFC5tb25yZW0udjEuU2lt",
-            "U3RhdHVzSABCBgoEYm9keUoECDwQRiKlAQoLRGV2aWNlSGVsbG8SGAoQcHJv",
-            "dG9jb2xfdmVyc2lvbhgBIAEoDRIRCglkZXZpY2VfaWQYAiABKAkSDQoFbW9k",
-            "ZWwYAyABKAkSEgoKZndfdmVyc2lvbhgEIAEoCRIXCg9kZXNjcmlwdG9yX2hh",
-            "c2gYBSABKA0SLQoJdHJhbnNwb3J0GAYgASgOMhoubW9ucmVtLnYxLkRldmlj",
-            "ZVRyYW5zcG9ydCJoCg1EZXZpY2VXZWxjb21lEhIKCnNlc3Npb25faWQYASAB",
-            "KAkSFwoPbmVlZF9kZXNjcmlwdG9yGAIgASgIEhMKC2RpcmVjdF9tb2RlGAMg",
-            "ASgIEhUKDW91dHB1dF9tYXhfaHoYBCABKA0iNwoJRGV2aWNlQnllEioKBnJl",
-            "YXNvbhgBIAEoDjIaLm1vbnJlbS52MS5EZXZpY2VCeWVSZWFzb24iIQoKRGV2",
-            "aWNlUGluZxITCgt0X2RldmljZV9tcxgBIAEoDSI0CgpEZXZpY2VQb25nEhMK",
-            "C3RfZGV2aWNlX21zGAEgASgNEhEKCXRfaG9zdF91cxgCIAEoBCI1Cg9EZXZp",
-            "Y2VQYWlyU3RhcnQSEQoJZGV2aWNlX2lkGAEgASgJEg8KB3NwYWtlX2EYAiAB",
-            "KAwiMwoPRGV2aWNlUGFpclNwYWtlEg8KB2hvc3RfaWQYASABKAkSDwoHc3Bh",
-            "a2VfYhgCIAEoDCIgChFEZXZpY2VQYWlyQ29uZmlybRILCgNtYWMYASABKAwi",
-            "RgoQRGV2aWNlUGFpclJlc3VsdBIKCgJvaxgBIAEoCBIPCgdob3N0X2lkGAIg",
-            "ASgJEhUKDXJldHJ5X2FmdGVyX3MYAyABKA0ioAEKB0VsZW1lbnQSCgoCaWQY",
-            "ASABKA0SJAoEa2luZBgCIAEoDjIWLm1vbnJlbS52MS5FbGVtZW50S2luZBIM",
-            "CgRuYW1lGAMgASgJEgsKA21pbhgEIAEoBRILCgNtYXgYBSABKAUSDwoHZGV0",
-            "ZW50cxgGIAEoDRIOCgZkaWdpdHMYByABKA0SDAoEcm93cxgIIAEoDRIMCgRj",
-            "b2xzGAkgASgNIlUKEERldmljZURlc2NyaXB0b3ISDAoEcGFnZRgBIAEoDRIN",
-            "CgVwYWdlcxgCIAEoDRIkCghlbGVtZW50cxgDIAMoCzISLm1vbnJlbS52MS5F",
-            "bGVtZW50ImsKCklucHV0VmFsdWUSCgoCaWQYASABKA0SEQoHcHJlc3NlZBgC",
-            "IAEoCEgAEhIKCHBvc2l0aW9uGAMgASgNSAASDwoFY291bnQYBCABKAVIABIQ",
-            "CgZhbmFsb2cYBSABKA1IAEIHCgV2YWx1ZSJ4ChBEZXZpY2VJbnB1dFN0YXRl",
-            "EgwKBGZ1bGwYASABKAgSEwoLdF9kZXZpY2VfbXMYAiABKA0SJAoFaXRlbXMY",
-            "AyADKAsyFS5tb25yZW0udjEuSW5wdXRWYWx1ZRIMCgRwYXJ0GAQgASgNEg0K",
-            "BXBhcnRzGAUgASgNInUKC091dHB1dFZhbHVlEgoKAmlkGAEgASgNEgwKAm9u",
-            "GAIgASgISAASDwoFbGV2ZWwYAyABKA1IABIOCgR0ZXh0GAQgASgJSAASEAoG",
-            "dGFyZ2V0GAUgASgFSAASEAoIdGV4dF9yb3cYBiABKA1CBwoFdmFsdWUiZQoR",
-            "RGV2aWNlT3V0cHV0U3RhdGUSDAoEZnVsbBgBIAEoCBIlCgVpdGVtcxgCIAMo",
-            "CzIWLm1vbnJlbS52MS5PdXRwdXRWYWx1ZRIMCgRwYXJ0GAMgASgNEg0KBXBh",
-            "cnRzGAQgASgNIiEKDkRldmljZUlkZW50aWZ5Eg8KB3NlY29uZHMYASABKA0q",
-            "aAoPRGV2aWNlVHJhbnNwb3J0EiAKHERFVklDRV9UUkFOU1BPUlRfVU5TUEVD",
-            "SUZJRUQQABIYChRERVZJQ0VfVFJBTlNQT1JUX1VTQhABEhkKFURFVklDRV9U",
-            "UkFOU1BPUlRfV0lGSRACKrgBCg9EZXZpY2VCeWVSZWFzb24SIQodREVWSUNF",
-            "X0JZRV9SRUFTT05fVU5TUEVDSUZJRUQQABIcChhERVZJQ0VfQllFX1JFQVNP",
-            "Tl9SRUJPT1QQARIeChpERVZJQ0VfQllFX1JFQVNPTl9VTlBBSVJFRBACEh4K",
-            "GkRFVklDRV9CWUVfUkVBU09OX1NIVVRET1dOEAMSJAogREVWSUNFX0JZRV9S",
-            "RUFTT05fUFJPVE9DT0xfRVJST1IQBCrAAgoLRWxlbWVudEtpbmQSHAoYRUxF",
-            "TUVOVF9LSU5EX1VOU1BFQ0lGSUVEEAASFwoTRUxFTUVOVF9LSU5EX0JVVFRP",
-            "ThABEhcKE0VMRU1FTlRfS0lORF9UT0dHTEUQAhIZChVFTEVNRU5UX0tJTkRf",
-            "U0VMRUNUT1IQAxIYChRFTEVNRU5UX0tJTkRfRU5DT0RFUhAEEhcKE0VMRU1F",
-            "TlRfS0lORF9BTkFMT0cQBRIUChBFTEVNRU5UX0tJTkRfTEVEEBQSGAoURUxF",
-            "TUVOVF9LSU5EX1NFR01FTlQQFRIVChFFTEVNRU5UX0tJTkRfVEVYVBAWEhYK",
-            "EkVMRU1FTlRfS0lORF9TRVJWTxAXEhgKFEVMRU1FTlRfS0lORF9TVEVQUEVS",
-            "EBgSGgoWRUxFTUVOVF9LSU5EX0JBQ0tMSUdIVBAZQi8KFmRldi5tb25yZW0u",
-            "cHJvdG9jb2wudjFQAaoCEk1vblJlbS5Qcm90b2NvbC5WMWIGcHJvdG8z"));
+            "RGV2aWNlV2VsY29tZUgAEjQKDWlvX2Rlc2NyaXB0b3IYDCABKAsyGy5tb25y",
+            "ZW0udjEuRGV2aWNlRGVzY3JpcHRvckgAEiMKA2J5ZRgNIAEoCzIULm1vbnJl",
+            "bS52MS5EZXZpY2VCeWVIABIhCgVlcnJvchgOIAEoCzIQLm1vbnJlbS52MS5F",
+            "cnJvckgAEiUKBHBpbmcYDyABKAsyFS5tb25yZW0udjEuRGV2aWNlUGluZ0gA",
+            "EiUKBHBvbmcYECABKAsyFS5tb25yZW0udjEuRGV2aWNlUG9uZ0gAEjAKCnBh",
+            "aXJfc3RhcnQYFCABKAsyGi5tb25yZW0udjEuRGV2aWNlUGFpclN0YXJ0SAAS",
+            "MAoKcGFpcl9zcGFrZRgVIAEoCzIaLm1vbnJlbS52MS5EZXZpY2VQYWlyU3Bh",
+            "a2VIABI0CgxwYWlyX2NvbmZpcm0YFiABKAsyHC5tb25yZW0udjEuRGV2aWNl",
+            "UGFpckNvbmZpcm1IABIyCgtwYWlyX3Jlc3VsdBgXIAEoCzIbLm1vbnJlbS52",
+            "MS5EZXZpY2VQYWlyUmVzdWx0SAASMgoLaW5wdXRfc3RhdGUYHiABKAsyGy5t",
+            "b25yZW0udjEuRGV2aWNlSW5wdXRTdGF0ZUgAEjQKDG91dHB1dF9zdGF0ZRgf",
+            "IAEoCzIcLm1vbnJlbS52MS5EZXZpY2VPdXRwdXRTdGF0ZUgAEi0KCGlkZW50",
+            "aWZ5GCAgASgLMhkubW9ucmVtLnYxLkRldmljZUlkZW50aWZ5SAASMAoNc2lt",
+            "X3N1YnNjcmliZRgyIAEoCzIXLm1vbnJlbS52MS5TaW1TdWJzY3JpYmVIABIy",
+            "Cg5zaW1fc3Vic2NyaWJlZBgzIAEoCzIYLm1vbnJlbS52MS5TaW1TdWJzY3Jp",
+            "YmVkSAASNAoPc2ltX3Vuc3Vic2NyaWJlGDQgASgLMhkubW9ucmVtLnYxLlNp",
+            "bVVuc3Vic2NyaWJlSAASKgoKc2ltX3ZhbHVlcxg1IAEoCzIULm1vbnJlbS52",
+            "MS5TaW1WYWx1ZXNIABIrCgtzaW1fc2V0X3Zhchg2IAEoCzIULm1vbnJlbS52",
+            "MS5TaW1TZXRWYXJIABIxCg5zaW1fZmlyZV9ldmVudBg3IAEoCzIXLm1vbnJl",
+            "bS52MS5TaW1GaXJlRXZlbnRIABIkCgdzaW1fYWNrGDggASgLMhEubW9ucmVt",
+            "LnYxLlNpbUFja0gAEioKCnNpbV9zdGF0dXMYOSABKAsyFC5tb25yZW0udjEu",
+            "U2ltU3RhdHVzSABCBgoEYm9keUoECDwQRiKlAQoLRGV2aWNlSGVsbG8SGAoQ",
+            "cHJvdG9jb2xfdmVyc2lvbhgBIAEoDRIRCglkZXZpY2VfaWQYAiABKAkSDQoF",
+            "bW9kZWwYAyABKAkSEgoKZndfdmVyc2lvbhgEIAEoCRIXCg9kZXNjcmlwdG9y",
+            "X2hhc2gYBSABKA0SLQoJdHJhbnNwb3J0GAYgASgOMhoubW9ucmVtLnYxLkRl",
+            "dmljZVRyYW5zcG9ydCJoCg1EZXZpY2VXZWxjb21lEhIKCnNlc3Npb25faWQY",
+            "ASABKAkSFwoPbmVlZF9kZXNjcmlwdG9yGAIgASgIEhMKC2RpcmVjdF9tb2Rl",
+            "GAMgASgIEhUKDW91dHB1dF9tYXhfaHoYBCABKA0iNwoJRGV2aWNlQnllEioK",
+            "BnJlYXNvbhgBIAEoDjIaLm1vbnJlbS52MS5EZXZpY2VCeWVSZWFzb24iIQoK",
+            "RGV2aWNlUGluZxITCgt0X2RldmljZV9tcxgBIAEoDSI0CgpEZXZpY2VQb25n",
+            "EhMKC3RfZGV2aWNlX21zGAEgASgNEhEKCXRfaG9zdF91cxgCIAEoBCI1Cg9E",
+            "ZXZpY2VQYWlyU3RhcnQSEQoJZGV2aWNlX2lkGAEgASgJEg8KB3NwYWtlX2EY",
+            "AiABKAwiMwoPRGV2aWNlUGFpclNwYWtlEg8KB2hvc3RfaWQYASABKAkSDwoH",
+            "c3Bha2VfYhgCIAEoDCIgChFEZXZpY2VQYWlyQ29uZmlybRILCgNtYWMYASAB",
+            "KAwiRgoQRGV2aWNlUGFpclJlc3VsdBIKCgJvaxgBIAEoCBIPCgdob3N0X2lk",
+            "GAIgASgJEhUKDXJldHJ5X2FmdGVyX3MYAyABKA0ioAEKB0VsZW1lbnQSCgoC",
+            "aWQYASABKA0SJAoEa2luZBgCIAEoDjIWLm1vbnJlbS52MS5FbGVtZW50S2lu",
+            "ZBIMCgRuYW1lGAMgASgJEgsKA21pbhgEIAEoBRILCgNtYXgYBSABKAUSDwoH",
+            "ZGV0ZW50cxgGIAEoDRIOCgZkaWdpdHMYByABKA0SDAoEcm93cxgIIAEoDRIM",
+            "CgRjb2xzGAkgASgNIlUKEERldmljZURlc2NyaXB0b3ISDAoEcGFnZRgBIAEo",
+            "DRINCgVwYWdlcxgCIAEoDRIkCghlbGVtZW50cxgDIAMoCzISLm1vbnJlbS52",
+            "MS5FbGVtZW50ImsKCklucHV0VmFsdWUSCgoCaWQYASABKA0SEQoHcHJlc3Nl",
+            "ZBgCIAEoCEgAEhIKCHBvc2l0aW9uGAMgASgNSAASDwoFY291bnQYBCABKAVI",
+            "ABIQCgZhbmFsb2cYBSABKA1IAEIHCgV2YWx1ZSJ4ChBEZXZpY2VJbnB1dFN0",
+            "YXRlEgwKBGZ1bGwYASABKAgSEwoLdF9kZXZpY2VfbXMYAiABKA0SJAoFaXRl",
+            "bXMYAyADKAsyFS5tb25yZW0udjEuSW5wdXRWYWx1ZRIMCgRwYXJ0GAQgASgN",
+            "Eg0KBXBhcnRzGAUgASgNInUKC091dHB1dFZhbHVlEgoKAmlkGAEgASgNEgwK",
+            "Am9uGAIgASgISAASDwoFbGV2ZWwYAyABKA1IABIOCgR0ZXh0GAQgASgJSAAS",
+            "EAoGdGFyZ2V0GAUgASgFSAASEAoIdGV4dF9yb3cYBiABKA1CBwoFdmFsdWUi",
+            "ZQoRRGV2aWNlT3V0cHV0U3RhdGUSDAoEZnVsbBgBIAEoCBIlCgVpdGVtcxgC",
+            "IAMoCzIWLm1vbnJlbS52MS5PdXRwdXRWYWx1ZRIMCgRwYXJ0GAMgASgNEg0K",
+            "BXBhcnRzGAQgASgNIiEKDkRldmljZUlkZW50aWZ5Eg8KB3NlY29uZHMYASAB",
+            "KA0qaAoPRGV2aWNlVHJhbnNwb3J0EiAKHERFVklDRV9UUkFOU1BPUlRfVU5T",
+            "UEVDSUZJRUQQABIYChRERVZJQ0VfVFJBTlNQT1JUX1VTQhABEhkKFURFVklD",
+            "RV9UUkFOU1BPUlRfV0lGSRACKrgBCg9EZXZpY2VCeWVSZWFzb24SIQodREVW",
+            "SUNFX0JZRV9SRUFTT05fVU5TUEVDSUZJRUQQABIcChhERVZJQ0VfQllFX1JF",
+            "QVNPTl9SRUJPT1QQARIeChpERVZJQ0VfQllFX1JFQVNPTl9VTlBBSVJFRBAC",
+            "Eh4KGkRFVklDRV9CWUVfUkVBU09OX1NIVVRET1dOEAMSJAogREVWSUNFX0JZ",
+            "RV9SRUFTT05fUFJPVE9DT0xfRVJST1IQBCrAAgoLRWxlbWVudEtpbmQSHAoY",
+            "RUxFTUVOVF9LSU5EX1VOU1BFQ0lGSUVEEAASFwoTRUxFTUVOVF9LSU5EX0JV",
+            "VFRPThABEhcKE0VMRU1FTlRfS0lORF9UT0dHTEUQAhIZChVFTEVNRU5UX0tJ",
+            "TkRfU0VMRUNUT1IQAxIYChRFTEVNRU5UX0tJTkRfRU5DT0RFUhAEEhcKE0VM",
+            "RU1FTlRfS0lORF9BTkFMT0cQBRIUChBFTEVNRU5UX0tJTkRfTEVEEBQSGAoU",
+            "RUxFTUVOVF9LSU5EX1NFR01FTlQQFRIVChFFTEVNRU5UX0tJTkRfVEVYVBAW",
+            "EhYKEkVMRU1FTlRfS0lORF9TRVJWTxAXEhgKFEVMRU1FTlRfS0lORF9TVEVQ",
+            "UEVSEBgSGgoWRUxFTUVOVF9LSU5EX0JBQ0tMSUdIVBAZQi8KFmRldi5tb25y",
+            "ZW0ucHJvdG9jb2wudjFQAaoCEk1vblJlbS5Qcm90b2NvbC5WMWIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::MonRem.Protocol.V1.CommonReflection.Descriptor, global::MonRem.Protocol.V1.SimReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::MonRem.Protocol.V1.DeviceTransport), typeof(global::MonRem.Protocol.V1.DeviceByeReason), typeof(global::MonRem.Protocol.V1.ElementKind), }, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::MonRem.Protocol.V1.DeviceFrame), global::MonRem.Protocol.V1.DeviceFrame.Parser, new[]{ "Seq", "Hello", "Welcome", "Descriptor_", "Bye", "Error", "Ping", "Pong", "PairStart", "PairSpake", "PairConfirm", "PairResult", "InputState", "OutputState", "Identify", "SimSubscribe", "SimSubscribed", "SimUnsubscribe", "SimValues", "SimSetVar", "SimFireEvent", "SimAck", "SimStatus" }, new[]{ "Body" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::MonRem.Protocol.V1.DeviceFrame), global::MonRem.Protocol.V1.DeviceFrame.Parser, new[]{ "Seq", "Hello", "Welcome", "IoDescriptor", "Bye", "Error", "Ping", "Pong", "PairStart", "PairSpake", "PairConfirm", "PairResult", "InputState", "OutputState", "Identify", "SimSubscribe", "SimSubscribed", "SimUnsubscribe", "SimValues", "SimSetVar", "SimFireEvent", "SimAck", "SimStatus" }, new[]{ "Body" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::MonRem.Protocol.V1.DeviceHello), global::MonRem.Protocol.V1.DeviceHello.Parser, new[]{ "ProtocolVersion", "DeviceId", "Model", "FwVersion", "DescriptorHash", "Transport" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::MonRem.Protocol.V1.DeviceWelcome), global::MonRem.Protocol.V1.DeviceWelcome.Parser, new[]{ "SessionId", "NeedDescriptor", "DirectMode", "OutputMaxHz" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::MonRem.Protocol.V1.DeviceBye), global::MonRem.Protocol.V1.DeviceBye.Parser, new[]{ "Reason" }, null, null, null, null),
@@ -229,8 +229,8 @@ namespace MonRem.Protocol.V1 {
         case BodyOneofCase.Welcome:
           Welcome = other.Welcome.Clone();
           break;
-        case BodyOneofCase.Descriptor_:
-          Descriptor_ = other.Descriptor_.Clone();
+        case BodyOneofCase.IoDescriptor:
+          IoDescriptor = other.IoDescriptor.Clone();
           break;
         case BodyOneofCase.Bye:
           Bye = other.Bye.Clone();
@@ -342,15 +342,18 @@ namespace MonRem.Protocol.V1 {
       }
     }
 
-    /// <summary>Field number for the "descriptor" field.</summary>
-    public const int Descriptor_FieldNumber = 12;
+    /// <summary>Field number for the "io_descriptor" field.</summary>
+    public const int IoDescriptorFieldNumber = 12;
+    /// <summary>
+    /// "descriptor" colide com a reflexão do protobuf em C#
+    /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::MonRem.Protocol.V1.DeviceDescriptor Descriptor_ {
-      get { return bodyCase_ == BodyOneofCase.Descriptor_ ? (global::MonRem.Protocol.V1.DeviceDescriptor) body_ : null; }
+    public global::MonRem.Protocol.V1.DeviceDescriptor IoDescriptor {
+      get { return bodyCase_ == BodyOneofCase.IoDescriptor ? (global::MonRem.Protocol.V1.DeviceDescriptor) body_ : null; }
       set {
         body_ = value;
-        bodyCase_ = value == null ? BodyOneofCase.None : BodyOneofCase.Descriptor_;
+        bodyCase_ = value == null ? BodyOneofCase.None : BodyOneofCase.IoDescriptor;
       }
     }
 
@@ -597,7 +600,7 @@ namespace MonRem.Protocol.V1 {
       None = 0,
       Hello = 10,
       Welcome = 11,
-      Descriptor_ = 12,
+      IoDescriptor = 12,
       Bye = 13,
       Error = 14,
       Ping = 15,
@@ -650,7 +653,7 @@ namespace MonRem.Protocol.V1 {
       if (Seq != other.Seq) return false;
       if (!object.Equals(Hello, other.Hello)) return false;
       if (!object.Equals(Welcome, other.Welcome)) return false;
-      if (!object.Equals(Descriptor_, other.Descriptor_)) return false;
+      if (!object.Equals(IoDescriptor, other.IoDescriptor)) return false;
       if (!object.Equals(Bye, other.Bye)) return false;
       if (!object.Equals(Error, other.Error)) return false;
       if (!object.Equals(Ping, other.Ping)) return false;
@@ -681,7 +684,7 @@ namespace MonRem.Protocol.V1 {
       if (Seq != 0) hash ^= Seq.GetHashCode();
       if (bodyCase_ == BodyOneofCase.Hello) hash ^= Hello.GetHashCode();
       if (bodyCase_ == BodyOneofCase.Welcome) hash ^= Welcome.GetHashCode();
-      if (bodyCase_ == BodyOneofCase.Descriptor_) hash ^= Descriptor_.GetHashCode();
+      if (bodyCase_ == BodyOneofCase.IoDescriptor) hash ^= IoDescriptor.GetHashCode();
       if (bodyCase_ == BodyOneofCase.Bye) hash ^= Bye.GetHashCode();
       if (bodyCase_ == BodyOneofCase.Error) hash ^= Error.GetHashCode();
       if (bodyCase_ == BodyOneofCase.Ping) hash ^= Ping.GetHashCode();
@@ -732,9 +735,9 @@ namespace MonRem.Protocol.V1 {
         output.WriteRawTag(90);
         output.WriteMessage(Welcome);
       }
-      if (bodyCase_ == BodyOneofCase.Descriptor_) {
+      if (bodyCase_ == BodyOneofCase.IoDescriptor) {
         output.WriteRawTag(98);
-        output.WriteMessage(Descriptor_);
+        output.WriteMessage(IoDescriptor);
       }
       if (bodyCase_ == BodyOneofCase.Bye) {
         output.WriteRawTag(106);
@@ -834,9 +837,9 @@ namespace MonRem.Protocol.V1 {
         output.WriteRawTag(90);
         output.WriteMessage(Welcome);
       }
-      if (bodyCase_ == BodyOneofCase.Descriptor_) {
+      if (bodyCase_ == BodyOneofCase.IoDescriptor) {
         output.WriteRawTag(98);
-        output.WriteMessage(Descriptor_);
+        output.WriteMessage(IoDescriptor);
       }
       if (bodyCase_ == BodyOneofCase.Bye) {
         output.WriteRawTag(106);
@@ -933,8 +936,8 @@ namespace MonRem.Protocol.V1 {
       if (bodyCase_ == BodyOneofCase.Welcome) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Welcome);
       }
-      if (bodyCase_ == BodyOneofCase.Descriptor_) {
-        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Descriptor_);
+      if (bodyCase_ == BodyOneofCase.IoDescriptor) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(IoDescriptor);
       }
       if (bodyCase_ == BodyOneofCase.Bye) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Bye);
@@ -1021,11 +1024,11 @@ namespace MonRem.Protocol.V1 {
           }
           Welcome.MergeFrom(other.Welcome);
           break;
-        case BodyOneofCase.Descriptor_:
-          if (Descriptor_ == null) {
-            Descriptor_ = new global::MonRem.Protocol.V1.DeviceDescriptor();
+        case BodyOneofCase.IoDescriptor:
+          if (IoDescriptor == null) {
+            IoDescriptor = new global::MonRem.Protocol.V1.DeviceDescriptor();
           }
-          Descriptor_.MergeFrom(other.Descriptor_);
+          IoDescriptor.MergeFrom(other.IoDescriptor);
           break;
         case BodyOneofCase.Bye:
           if (Bye == null) {
@@ -1186,11 +1189,11 @@ namespace MonRem.Protocol.V1 {
           }
           case 98: {
             global::MonRem.Protocol.V1.DeviceDescriptor subBuilder = new global::MonRem.Protocol.V1.DeviceDescriptor();
-            if (bodyCase_ == BodyOneofCase.Descriptor_) {
-              subBuilder.MergeFrom(Descriptor_);
+            if (bodyCase_ == BodyOneofCase.IoDescriptor) {
+              subBuilder.MergeFrom(IoDescriptor);
             }
             input.ReadMessage(subBuilder);
-            Descriptor_ = subBuilder;
+            IoDescriptor = subBuilder;
             break;
           }
           case 106: {
@@ -1407,11 +1410,11 @@ namespace MonRem.Protocol.V1 {
           }
           case 98: {
             global::MonRem.Protocol.V1.DeviceDescriptor subBuilder = new global::MonRem.Protocol.V1.DeviceDescriptor();
-            if (bodyCase_ == BodyOneofCase.Descriptor_) {
-              subBuilder.MergeFrom(Descriptor_);
+            if (bodyCase_ == BodyOneofCase.IoDescriptor) {
+              subBuilder.MergeFrom(IoDescriptor);
             }
             input.ReadMessage(subBuilder);
-            Descriptor_ = subBuilder;
+            IoDescriptor = subBuilder;
             break;
           }
           case 106: {

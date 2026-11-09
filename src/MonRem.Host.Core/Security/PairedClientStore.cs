@@ -34,6 +34,12 @@ public sealed class PairedClientStore
             return _byClientId.Values.FirstOrDefault(r => r.CertFingerprint == fingerprint);
     }
 
+    public PairedClientRecord? FindByClientId(string clientId)
+    {
+        lock (_lock)
+            return _byClientId.GetValueOrDefault(clientId);
+    }
+
     public IReadOnlyList<PairedClientRecord> List()
     {
         lock (_lock)

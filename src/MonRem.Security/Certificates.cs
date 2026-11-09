@@ -1,5 +1,7 @@
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Principal;
 
 namespace MonRem.Security;
 
@@ -29,8 +31,44 @@ public static class Certificates
 
         var cert = CreateSelfSigned(commonName);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(pfxPath))!);
-        File.WriteAllBytes(pfxPath, cert.Export(X509ContentType.Pkcs12));
+        WritePrivateFile(pfxPath, cert.Export(X509ContentType.Pkcs12));
         return cert;
+    }
+
+    /// <summary>
+    /// Grava um arquivo com segredo legível só pelo dono: no Windows, ACL sem herança para SYSTEM,
+    /// Administradores e o usuário atual; no Linux/Android/macOS, modo 600.
+    /// </summary>
+    public static void WritePrivateFile(string path, byte[] content)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var security = new FileSecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            foreach (var sid in new[]
+            {
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+                WindowsIdentity.GetCurrent().User!,
+            })
+                security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
+
+            using var stream = new FileInfo(path).Create(FileMode.Create, FileSystemRights.FullControl, FileShare.None, 4096, FileOptions.None, security);
+            stream.Write(content);
+            return;
+        }
+
+        using (var stream = new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.Create,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        }))
+        {
+            stream.Write(content);
+        }
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
     /// <summary>SHA-256 do certificado DER, em hex minúsculo.</summary>

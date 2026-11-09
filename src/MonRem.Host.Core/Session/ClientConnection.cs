@@ -12,18 +12,26 @@ namespace MonRem.Host.Core.Session;
 
 /// <summary>
 /// Uma conexão de controle. Estados: Unpaired → (pareamento) → AwaitHello → AwaitCapabilities → Ready.
+/// Toda escrita passa pelo <see cref="ConnectionOutbox"/>: nada aqui espera o socket.
 /// </summary>
 internal sealed class ClientConnection
 {
-    private static readonly TimeSpan PairingIdleLimit = TimeSpan.FromMinutes(2);
+    /// <summary>Conexão desconhecida tem 15 s para começar a parear.</summary>
+    private static readonly TimeSpan UnpairedIdleLimit = TimeSpan.FromSeconds(15);
+
+    /// <summary>Prazo absoluto do pareamento a partir do PairStart (digitar o PIN cabe folgado).</summary>
+    private static readonly TimeSpan PairingDeadline = TimeSpan.FromSeconds(60);
+
     private static readonly TimeSpan HelloIdleLimit = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan CloseFlushLimit = TimeSpan.FromSeconds(1);
 
     private readonly HostContext _ctx;
     private readonly SslStream _ssl;
     private readonly X509Certificate2 _clientCert;
+    private readonly string _fingerprint;
     private readonly string _remote;
     private readonly ILogger _logger;
-    private readonly EnvelopeWriter _writer;
+    private readonly ConnectionOutbox _outbox;
     private readonly CancellationTokenSource _cts = new();
 
     private State _state;
@@ -31,18 +39,26 @@ internal sealed class ClientConnection
     private PairingAttempt? _pairing;
     private string? _sessionId;
     private byte[]? _sessionSecret;
-    private Capabilities? _capabilities;
+    private IDisposable? _registration;
+    private bool _countedUnpaired;
     private long _lastRxTimestamp;
 
-    public ClientConnection(HostContext ctx, SslStream ssl, X509Certificate2 clientCert, string remote)
+    /// <param name="countedUnpaired">true se o servidor reservou uma vaga de conexão sem pareamento para esta.</param>
+    public ClientConnection(HostContext ctx, SslStream ssl, X509Certificate2 clientCert, string remote, PairedClientRecord? client, bool countedUnpaired)
     {
         _ctx = ctx;
         _ssl = ssl;
         _clientCert = clientCert;
+        _fingerprint = Certificates.Fingerprint(clientCert);
         _remote = remote;
         _logger = ctx.LoggerFactory.CreateLogger<ClientConnection>();
-        _writer = new EnvelopeWriter(ssl);
-        _client = ctx.PairedClients.FindByFingerprint(Certificates.Fingerprint(clientCert));
+        _outbox = new ConnectionOutbox(reason =>
+        {
+            _logger.LogInformation("Encerrando {Remote}: {Reason}", _remote, reason);
+            _cts.Cancel();
+        });
+        _client = client;
+        _countedUnpaired = countedUnpaired;
         _state = _client is null ? State.Unpaired : State.AwaitHello;
     }
 
@@ -53,6 +69,8 @@ internal sealed class ClientConnection
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
         var token = linked.Token;
+        using var writerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var writer = _outbox.RunWriterAsync(_ssl, writerCts.Token);
         _lastRxTimestamp = _ctx.Time.GetTimestamp();
         var watchdog = WatchdogAsync(token);
 
@@ -68,29 +86,38 @@ internal sealed class ClientConnection
         }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested)
         {
-            // Encerrada por nós (timeout, Bye, erro de pareamento).
+            // Encerrada por nós (timeout, Bye, despareamento, cliente sem ler).
         }
         finally
         {
             await _cts.CancelAsync().ConfigureAwait(false);
             try { await watchdog.ConfigureAwait(false); } catch (OperationCanceledException) { }
             Cleanup();
-            await _writer.DisposeAsync().ConfigureAwait(false);
+
+            // Dá até 1 s para o Bye e as últimas respostas saírem.
+            _outbox.Close();
+            if (await Task.WhenAny(writer, Task.Delay(CloseFlushLimit, CancellationToken.None)).ConfigureAwait(false) != writer)
+                await writerCts.CancelAsync().ConfigureAwait(false);
+            await writer.ConfigureAwait(false);
         }
     }
 
     private async Task DispatchAsync(Envelope e, CancellationToken ct)
     {
+        // Re-pareamento de um cert já conhecido (ex.: pareamento anterior caiu antes do cliente gravar o host).
+        if (_state == State.AwaitHello && e.BodyCase == Envelope.BodyOneofCase.PairStart)
+            _state = State.Unpaired;
+
         switch (_state)
         {
             case State.Unpaired:
-                await HandlePairingAsync(e, ct).ConfigureAwait(false);
+                await HandlePairingAsync(e).ConfigureAwait(false);
                 return;
             case State.AwaitHello when e.BodyCase == Envelope.BodyOneofCase.Hello:
-                await HandleHelloAsync(e, ct).ConfigureAwait(false);
+                HandleHello(e);
                 return;
             case State.AwaitCapabilities when e.BodyCase == Envelope.BodyOneofCase.Capabilities:
-                await HandleCapabilitiesAsync(e, ct).ConfigureAwait(false);
+                HandleCapabilities(e);
                 return;
             case State.Ready:
                 await HandleReadyAsync(e, ct).ConfigureAwait(false);
@@ -99,149 +126,165 @@ internal sealed class ClientConnection
 
         if (e.BodyCase == Envelope.BodyOneofCase.Ping)
         {
-            await SendAsync(Pong(e), ct).ConfigureAwait(false);
+            Send(Pong(e));
             return;
         }
-        await SendErrorAsync(e.ReqId, ErrorCode.ErrorInvalidArgument, $"{e.BodyCase} não esperado no estado {_state}", ct).ConfigureAwait(false);
+        SendError(e.ReqId, ErrorCode.ErrorInvalidArgument, $"{e.BodyCase} não esperado no estado {_state}");
     }
 
     // ------------------------------------------------------------------ pareamento
 
-    private async Task HandlePairingAsync(Envelope e, CancellationToken ct)
+    private Task HandlePairingAsync(Envelope e)
     {
         switch (e.BodyCase)
         {
             case Envelope.BodyOneofCase.PairStart when _pairing is null:
-                await OnPairStartAsync(e, ct).ConfigureAwait(false);
+                OnPairStart(e);
                 break;
-            case Envelope.BodyOneofCase.PairSpake when _pairing is { Spake: null }:
-                await OnPairSpakeAsync(e, ct).ConfigureAwait(false);
+            case Envelope.BodyOneofCase.PairSpake when _pairing is { Result: null }:
+                OnPairSpake(e);
                 break;
             case Envelope.BodyOneofCase.PairConfirm when _pairing is { Result: not null }:
-                await OnPairConfirmAsync(e, ct).ConfigureAwait(false);
+                OnPairConfirm(e);
                 break;
             default:
-                await SendErrorAsync(e.ReqId, ErrorCode.ErrorAuthUnpaired, "cliente não pareado", ct).ConfigureAwait(false);
-                await CloseAsync().ConfigureAwait(false);
+                SendError(e.ReqId, ErrorCode.ErrorAuthUnpaired, "cliente não pareado");
+                Close();
                 break;
         }
+        return Task.CompletedTask;
     }
 
-    private async Task OnPairStartAsync(Envelope e, CancellationToken ct)
+    private void OnPairStart(Envelope e)
     {
         var start = e.PairStart;
+        if (!_ctx.Options.AllowPairing)
+        {
+            SendError(e.ReqId, ErrorCode.ErrorPairingLocked, "pareamento desativado no host");
+            Close();
+            return;
+        }
         var retry = _ctx.PairingGuard.RetryAfter;
         if (retry > TimeSpan.Zero)
         {
-            await SendAsync(Reply(e, new Envelope { PairResult = new PairResult { Ok = false, RetryAfterS = (uint)Math.Ceiling(retry.TotalSeconds) } }), ct).ConfigureAwait(false);
-            await CloseAsync().ConfigureAwait(false);
+            Send(Reply(e, new Envelope { PairResult = new PairResult { Ok = false, RetryAfterS = (uint)Math.Ceiling(retry.TotalSeconds) } }));
+            Close();
             return;
         }
-        if (string.IsNullOrWhiteSpace(start.ClientId) || start.ClientId.Length > 64)
+        if (string.IsNullOrWhiteSpace(start.ClientId) || start.ClientId.Length > 64 || start.DeviceName.Length > 64)
         {
-            await SendErrorAsync(e.ReqId, ErrorCode.ErrorInvalidArgument, "client_id inválido", ct).ConfigureAwait(false);
-            await CloseAsync().ConfigureAwait(false);
+            SendError(e.ReqId, ErrorCode.ErrorInvalidArgument, "client_id ou device_name inválido");
+            Close();
             return;
         }
-        if (start.DeviceName.Length > 64)
+        // Um client_id já pareado com OUTRO certificado não pode ser tomado: despareie no host antes.
+        var existing = _ctx.PairedClients.FindByClientId(start.ClientId);
+        if (existing is not null && existing.CertFingerprint != _fingerprint)
         {
-            await SendErrorAsync(e.ReqId, ErrorCode.ErrorInvalidArgument, "device_name longo demais", ct).ConfigureAwait(false);
-            await CloseAsync().ConfigureAwait(false);
+            SendError(e.ReqId, ErrorCode.ErrorInvalidArgument, "client_id já pareado com outro certificado; despareie no host");
+            Close();
             return;
         }
         if (!_ctx.PairingGuard.TryBegin(this))
         {
-            // Outro pareamento em andamento: tente de novo em alguns segundos.
-            await SendAsync(Reply(e, new Envelope { PairResult = new PairResult { Ok = false, RetryAfterS = 5 } }), ct).ConfigureAwait(false);
-            await CloseAsync().ConfigureAwait(false);
+            Send(Reply(e, new Envelope { PairResult = new PairResult { Ok = false, RetryAfterS = 5 } }));
+            Close();
             return;
         }
 
         var pin = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
-        _pairing = new PairingAttempt(start.ClientId, start.DeviceName, start.Platform, pin);
-        _ctx.PinDisplay.Show(string.IsNullOrWhiteSpace(start.DeviceName) ? start.ClientId : start.DeviceName, pin);
-        _logger.LogInformation("Pareamento iniciado por {Client} ({Remote})", start.ClientId, _remote);
+        _pairing = new PairingAttempt(start.ClientId, start.DeviceName, start.Platform, pin, _ctx.Time.GetTimestamp());
+        _ctx.PinDisplay.Show(new PairingPrompt(
+            string.IsNullOrWhiteSpace(start.DeviceName) ? start.ClientId : start.DeviceName,
+            start.ClientId, _fingerprint[..16], _remote, pin));
+        _logger.LogInformation("Pareamento iniciado por {Client} ({Remote}, cert {Fingerprint})", start.ClientId, _remote, _fingerprint[..16]);
 
-        await SendAsync(Reply(e, new Envelope
+        Send(Reply(e, new Envelope
         {
-            PairChallenge = new PairChallenge { HostId = _ctx.HostId, PinDigits = ProtocolConstants.PinDigits },
-        }), ct).ConfigureAwait(false);
+            PairChallenge = new PairChallenge
+            {
+                HostId = _ctx.HostId,
+                PinDigits = ProtocolConstants.PinDigits,
+                KdfIterations = (uint)_ctx.Options.PinKdfIterations,
+            },
+        }));
     }
 
-    private async Task OnPairSpakeAsync(Envelope e, CancellationToken ct)
+    private void OnPairSpake(Envelope e)
     {
         var attempt = _pairing!;
         try
         {
             var w = Spake2.DeriveW(attempt.Pin, attempt.ClientId, _ctx.HostId, _ctx.Options.PinKdfIterations);
             var spake = new Spake2(Spake2Role.B, attempt.ClientId, _ctx.HostId, w);
-            var aad = Certificates.PairingAad(_ctx.HostCertificate, _clientCert);
-            attempt.Result = spake.Finish(e.PairSpake.Share.Span, aad);
-            attempt.Spake = spake;
-            await SendAsync(Reply(e, new Envelope { PairSpake = new PairSpake { Share = Google.Protobuf.ByteString.CopyFrom(spake.OwnShare) } }), ct).ConfigureAwait(false);
+            attempt.Result = spake.Finish(e.PairSpake.Share.Span, Certificates.PairingAad(_ctx.HostCertificate, _clientCert));
+            Send(Reply(e, new Envelope { PairSpake = new PairSpake { Share = Google.Protobuf.ByteString.CopyFrom(spake.OwnShare) } }));
         }
         catch (CryptographicException ex)
         {
-            await FailPairingAsync(e, $"SPAKE2 inválido: {ex.Message}", ct).ConfigureAwait(false);
+            FailPairing(e, $"SPAKE2 inválido: {ex.Message}");
         }
     }
 
-    private async Task OnPairConfirmAsync(Envelope e, CancellationToken ct)
+    private void OnPairConfirm(Envelope e)
     {
         var attempt = _pairing!;
         if (!attempt.Result!.VerifyPeer(e.PairConfirm.Mac.Span))
         {
-            await FailPairingAsync(e, "PIN incorreto", ct).ConfigureAwait(false);
+            FailPairing(e, "PIN incorreto");
             return;
         }
 
         // Resposta ao PairConfirm do cliente = a confirmação do host; o PairResult vem em seguida, como notificação.
-        await SendAsync(Reply(e, new Envelope { PairConfirm = new PairConfirm { Mac = Google.Protobuf.ByteString.CopyFrom(attempt.Result.OwnConfirmation) } }), ct).ConfigureAwait(false);
+        Send(Reply(e, new Envelope { PairConfirm = new PairConfirm { Mac = Google.Protobuf.ByteString.CopyFrom(attempt.Result.OwnConfirmation) } }));
 
         var now = DateTimeOffset.UtcNow;
-        _client = new PairedClientRecord(attempt.ClientId, attempt.DeviceName, attempt.Platform,
-            Certificates.Fingerprint(_clientCert), now, now);
+        _client = new PairedClientRecord(attempt.ClientId, attempt.DeviceName, attempt.Platform, _fingerprint, now, now);
         _ctx.PairedClients.Upsert(_client);
         _ctx.PairingGuard.RecordSuccess();
-        _ctx.PairingGuard.End(this);
-        _ctx.PinDisplay.Clear();
-        _pairing = null;
+        EndPairing();
         _state = State.AwaitHello;
         _lastRxTimestamp = _ctx.Time.GetTimestamp();
+        LeaveUnpairedSlot();
         _logger.LogInformation("Cliente {Client} pareado", attempt.ClientId);
 
-        await SendAsync(new Envelope { PairResult = new PairResult { Ok = true, HostId = _ctx.HostId } }, ct).ConfigureAwait(false);
+        Send(new Envelope { PairResult = new PairResult { Ok = true, HostId = _ctx.HostId } });
     }
 
-    private async Task FailPairingAsync(Envelope e, string reason, CancellationToken ct)
+    private void FailPairing(Envelope e, string reason)
     {
         _ctx.PairingGuard.RecordFailure();
-        _ctx.PairingGuard.End(this);
-        _ctx.PinDisplay.Clear();
+        EndPairing();
         _logger.LogWarning("Pareamento falhou ({Remote}): {Reason}", _remote, reason);
-        _pairing = null;
-        await SendAsync(Reply(e, new Envelope
+        Send(Reply(e, new Envelope
         {
             PairResult = new PairResult { Ok = false, RetryAfterS = (uint)Math.Ceiling(_ctx.PairingGuard.RetryAfter.TotalSeconds) },
-        }), ct).ConfigureAwait(false);
-        await CloseAsync().ConfigureAwait(false);
+        }));
+        Close();
+    }
+
+    private void EndPairing()
+    {
+        if (_pairing is not null) _ctx.PinDisplay.Clear();
+        _pairing = null;
+        _ctx.PairingGuard.End(this);
     }
 
     // ------------------------------------------------------------------ sessão
 
-    private async Task HandleHelloAsync(Envelope e, CancellationToken ct)
+    private void HandleHello(Envelope e)
     {
         var hello = e.Hello;
         if (hello.ProtocolVersion != ProtocolConstants.ProtocolVersion)
         {
-            await SendErrorAsync(e.ReqId, ErrorCode.ErrorVersionUnsupported, $"versão {hello.ProtocolVersion} não suportada (host: {ProtocolConstants.ProtocolVersion})", ct).ConfigureAwait(false);
-            await CloseAsync().ConfigureAwait(false);
+            SendError(e.ReqId, ErrorCode.ErrorVersionUnsupported, $"versão {hello.ProtocolVersion} não suportada (host: {ProtocolConstants.ProtocolVersion})");
+            Close();
             return;
         }
         if (hello.ClientId != _client!.ClientId)
         {
-            await SendErrorAsync(e.ReqId, ErrorCode.ErrorAuthUnpaired, "client_id não corresponde ao certificado", ct).ConfigureAwait(false);
-            await CloseAsync().ConfigureAwait(false);
+            SendError(e.ReqId, ErrorCode.ErrorAuthUnpaired, "client_id não corresponde ao certificado");
+            Close();
             return;
         }
 
@@ -255,17 +298,19 @@ internal sealed class ClientConnection
         }
         catch (CryptographicException ex)
         {
-            await SendErrorAsync(e.ReqId, ErrorCode.ErrorInvalidArgument, $"key_share inválido: {ex.Message}", ct).ConfigureAwait(false);
-            await CloseAsync().ConfigureAwait(false);
+            _ctx.Sessions.MarkDisconnected(hello.ClientId, sessionId);
+            SendError(e.ReqId, ErrorCode.ErrorInvalidArgument, $"key_share inválido: {ex.Message}");
+            Close();
             return;
         }
 
         _sessionId = sessionId;
         _state = State.AwaitCapabilities;
+        _registration = _ctx.Connections.Register(hello.ClientId, CloseWithByeAsync);
         _ctx.PairedClients.Touch(hello.ClientId);
         _logger.LogInformation("Sessão {Session} aberta para {Client} (resume: {Resumed})", sessionId, hello.ClientId, resumed);
 
-        await SendAsync(Reply(e, new Envelope
+        Send(Reply(e, new Envelope
         {
             HelloAck = new HelloAck
             {
@@ -277,28 +322,27 @@ internal sealed class ClientConnection
                 ResumeToken = Google.Protobuf.ByteString.CopyFrom(resumeToken),
                 KeyShare = Google.Protobuf.ByteString.CopyFrom(SessionKeys.ExportPublic(ecdh)),
             },
-        }), ct).ConfigureAwait(false);
+        }));
     }
 
-    private async Task HandleCapabilitiesAsync(Envelope e, CancellationToken ct)
+    private void HandleCapabilities(Envelope e)
     {
-        _capabilities = e.Capabilities;
         _state = State.Ready;
         _ctx.Sim.Connection.StatusChanged += OnSimStatus;
         _ctx.Sim.Connection.AircraftChanged += OnAircraft;
         _ctx.Sim.Connection.SystemEvent += OnSystemEvent;
 
-        await SendAsync(Reply(e, new Envelope
+        Send(Reply(e, new Envelope
         {
             SessionReady = new SessionReady
             {
                 UdpPorts = new UdpPorts { Media = (uint)_ctx.Options.MediaPort, Input = (uint)_ctx.Options.InputPort },
                 ActiveLayoutId = "",
             },
-        }), ct).ConfigureAwait(false);
-        await SendAsync(new Envelope { SimStatus = SimStatusMessage() }, ct).ConfigureAwait(false);
+        }));
+        Send(new Envelope { SimStatus = SimStatusMessage() });
         if (_ctx.Sim.Connection.Aircraft is { } aircraft)
-            await SendAsync(new Envelope { SimAircraftChanged = ToProto(aircraft) }, ct).ConfigureAwait(false);
+            Send(new Envelope { SimAircraftChanged = ToProto(aircraft) });
     }
 
     private async Task HandleReadyAsync(Envelope e, CancellationToken ct)
@@ -306,12 +350,12 @@ internal sealed class ClientConnection
         switch (e.BodyCase)
         {
             case Envelope.BodyOneofCase.Ping:
-                await SendAsync(Pong(e), ct).ConfigureAwait(false);
+                Send(Pong(e));
                 break;
 
             case Envelope.BodyOneofCase.Bye:
                 _logger.LogInformation("Cliente {Client} saiu: {Reason}", _client?.ClientId, e.Bye.Reason);
-                await CloseAsync().ConfigureAwait(false);
+                Close();
                 break;
 
             case Envelope.BodyOneofCase.ListPairedClients:
@@ -324,102 +368,76 @@ internal sealed class ClientConnection
                     PairedAtUnix = (ulong)r.PairedAt.ToUnixTimeSeconds(),
                     LastSeenUnix = (ulong)r.LastSeen.ToUnixTimeSeconds(),
                 }));
-                await SendAsync(Reply(e, new Envelope { PairedClients = list }), ct).ConfigureAwait(false);
+                Send(Reply(e, new Envelope { PairedClients = list }));
                 break;
 
             case Envelope.BodyOneofCase.Unpair:
-                var target = string.IsNullOrEmpty(e.Unpair.ClientId) ? _client!.ClientId : e.Unpair.ClientId;
-                var removed = _ctx.PairedClients.Remove(target);
-                if (!removed)
+                // Pelo protocolo, um cliente só despareia a si mesmo. Despareiar outros é ação do host.
+                if (e.Unpair.ClientId.Length > 0 && e.Unpair.ClientId != _client!.ClientId)
                 {
-                    await SendErrorAsync(e.ReqId, ErrorCode.ErrorNotFound, $"cliente {target} não está pareado", ct).ConfigureAwait(false);
+                    SendError(e.ReqId, ErrorCode.ErrorNotOwner, "um cliente só pode despareiar a si mesmo");
                     break;
                 }
-                await SendAsync(Reply(e, new Envelope { SimAck = new SimAck { Ok = true } }), ct).ConfigureAwait(false);
-                if (target == _client!.ClientId)
-                {
-                    await SendAsync(new Envelope { Bye = new Bye { Reason = ByeReason.Unpaired } }, ct).ConfigureAwait(false);
-                    await CloseAsync().ConfigureAwait(false);
-                }
+                Send(Reply(e, new Envelope { SimAck = new SimAck { Ok = true } }));
+                await _ctx.UnpairAsync(_client!.ClientId).ConfigureAwait(false);
                 break;
 
             case Envelope.BodyOneofCase.GetSimStatus:
-                await SendAsync(Reply(e, new Envelope { SimStatus = SimStatusMessage() }), ct).ConfigureAwait(false);
+                Send(Reply(e, new Envelope { SimStatus = SimStatusMessage() }));
                 break;
 
             case Envelope.BodyOneofCase.SimSubscribe:
-                var subscribed = _ctx.Subscriptions.Subscribe(_sessionId!, e.SimSubscribe, env => SendAsync(env, _cts.Token));
-                await SendAsync(Reply(e, new Envelope { SimSubscribed = subscribed }), ct).ConfigureAwait(false);
+                var subscribed = _ctx.Subscriptions.Subscribe(_sessionId!, e.SimSubscribe, env =>
+                {
+                    _outbox.OfferSimValues(env.SimValues);
+                    return ValueTask.CompletedTask;
+                });
+                Send(Reply(e, new Envelope { SimSubscribed = subscribed }));
                 break;
 
             case Envelope.BodyOneofCase.SimUnsubscribe:
                 var ok = _ctx.Subscriptions.Unsubscribe(_sessionId!, e.SimUnsubscribe.SubId);
                 if (e.ReqId != 0)
-                    await SendAsync(Reply(e, new Envelope { SimAck = ok ? new SimAck { Ok = true } : Nack(ErrorCode.ErrorNotFound, "assinatura inexistente") }), ct).ConfigureAwait(false);
+                    Send(Reply(e, new Envelope { SimAck = ok ? new SimAck { Ok = true } : Nack(ErrorCode.ErrorNotFound, "assinatura inexistente") }));
                 break;
 
             case Envelope.BodyOneofCase.SimSetVar:
-                await SendAsync(Reply(e, new Envelope { SimAck = await SetVarAsync(e.SimSetVar, ct).ConfigureAwait(false) }), ct).ConfigureAwait(false);
+                Send(Reply(e, new Envelope { SimAck = await SimCommands.SetAsync(_ctx.Sim, e.SimSetVar, ct).ConfigureAwait(false) }));
                 break;
 
             case Envelope.BodyOneofCase.SimFireEvent:
-                await SendAsync(Reply(e, new Envelope { SimAck = await FireAsync(e.SimFireEvent, ct).ConfigureAwait(false) }), ct).ConfigureAwait(false);
+                Send(Reply(e, new Envelope { SimAck = await SimCommands.FireAsync(_ctx.Sim, e.SimFireEvent, ct).ConfigureAwait(false) }));
                 break;
 
             case Envelope.BodyOneofCase.SimListInputEvents:
-                var events = await _ctx.Sim.Connection.ListInputEventsAsync(ct).ConfigureAwait(false);
                 var eventList = new SimInputEventList();
-                eventList.Items.AddRange(events);
-                await SendAsync(Reply(e, new Envelope { SimInputEventList = eventList }), ct).ConfigureAwait(false);
+                try
+                {
+                    eventList.Items.AddRange(await _ctx.Sim.Connection.ListInputEventsAsync(ct).ConfigureAwait(false));
+                }
+                catch (Exception ex) when (ex is SimException or TimeoutException)
+                {
+                    _logger.LogDebug(ex, "ListInputEvents falhou");
+                }
+                Send(Reply(e, new Envelope { SimInputEventList = eventList }));
                 break;
 
             case Envelope.BodyOneofCase.StreamStats:
                 break; // telemetria do vídeo: ainda sem pipeline nesta versão
 
             default:
-                await SendErrorAsync(e.ReqId, ErrorCode.ErrorInternal, $"{e.BodyCase} ainda não implementado no host", ct).ConfigureAwait(false);
+                SendError(e.ReqId, ErrorCode.ErrorInternal, $"{e.BodyCase} ainda não implementado no host");
                 break;
         }
     }
 
-    private async Task<SimAck> SetVarAsync(SimSetVar request, CancellationToken ct)
-    {
-        try
-        {
-            var reference = SimRef.Parse(request.Ref);
-            var backend = _ctx.Sim.Resolve(reference, SimOperation.Set);
-            var datum = request.ValueCase == SimSetVar.ValueOneofCase.Text ? SimDatum.Of(request.Text) : SimDatum.Of(request.Number);
-            await backend.SetAsync(reference, datum, ct).ConfigureAwait(false);
-            return new SimAck { Ok = true };
-        }
-        catch (FormatException ex) { return Nack(ErrorCode.ErrorInvalidArgument, ex.Message); }
-        catch (SimException ex) { return Nack(ex.Code, ex.Message); }
-    }
-
-    private async Task<SimAck> FireAsync(SimFireEvent request, CancellationToken ct)
-    {
-        try
-        {
-            if (request.Params.Count > 5) return Nack(ErrorCode.ErrorInvalidArgument, "no máximo 5 parâmetros");
-            var reference = SimRef.Parse(request.Ref);
-            var backend = _ctx.Sim.Resolve(reference, SimOperation.Fire);
-            await backend.FireAsync(reference, request.Params, ct).ConfigureAwait(false);
-            return new SimAck { Ok = true };
-        }
-        catch (FormatException ex) { return Nack(ErrorCode.ErrorInvalidArgument, ex.Message); }
-        catch (SimException ex) { return Nack(ex.Code, ex.Message); }
-    }
-
     // ------------------------------------------------------------------ eventos do sim → cliente
 
-    private void OnSimStatus(SimStatusInfo _) => Post(new Envelope { SimStatus = SimStatusMessage() });
+    private void OnSimStatus(SimStatusInfo _) => Send(new Envelope { SimStatus = SimStatusMessage() });
 
-    private void OnAircraft(AircraftInfo aircraft) => Post(new Envelope { SimAircraftChanged = ToProto(aircraft) });
+    private void OnAircraft(AircraftInfo aircraft) => Send(new Envelope { SimAircraftChanged = ToProto(aircraft) });
 
-    private void OnSystemEvent(SimSystemEventType type) => Post(new Envelope { SimSystemEvent = new SimSystemEvent { Type = type } });
-
-    private void Post(Envelope envelope) => _ = SendAsync(envelope, _cts.Token).AsTask().ContinueWith(
-        t => _logger.LogDebug(t.Exception, "Falha ao enviar notificação"), TaskContinuationOptions.OnlyOnFaulted);
+    private void OnSystemEvent(SimSystemEventType type) => Send(new Envelope { SimSystemEvent = new SimSystemEvent { Type = type } });
 
     private SimStatus SimStatusMessage()
     {
@@ -451,31 +469,33 @@ internal sealed class ClientConnection
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromSeconds(1), _ctx.Time, ct).ConfigureAwait(false);
+
+            if (_pairing is { } attempt && _ctx.Time.GetElapsedTime(attempt.StartedTimestamp) > PairingDeadline)
+            {
+                _logger.LogInformation("Pareamento de {Remote} expirou", _remote);
+                Close(ByeReason.Timeout);
+                return;
+            }
+
             var limit = _state switch
             {
-                State.Unpaired => PairingIdleLimit,
+                State.Unpaired => _pairing is null ? UnpairedIdleLimit : PairingDeadline,
                 State.AwaitHello or State.AwaitCapabilities => HelloIdleLimit,
                 _ => ProtocolConstants.HostPingTimeout,
             };
             if (_ctx.Time.GetElapsedTime(_lastRxTimestamp) <= limit) continue;
 
             _logger.LogInformation("Timeout de {Remote} no estado {State}", _remote, _state);
-            try
-            {
-                await SendAsync(new Envelope { Bye = new Bye { Reason = ByeReason.Timeout } }, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException)
-            {
-            }
-            await CloseAsync().ConfigureAwait(false);
+            Close(ByeReason.Timeout);
             return;
         }
     }
 
     private void Cleanup()
     {
-        if (_pairing is not null) _ctx.PinDisplay.Clear();
-        _ctx.PairingGuard.End(this);
+        EndPairing();
+        LeaveUnpairedSlot();
+        _registration?.Dispose();
         if (_state == State.Ready)
         {
             _ctx.Sim.Connection.StatusChanged -= OnSimStatus;
@@ -490,12 +510,30 @@ internal sealed class ClientConnection
         if (_sessionSecret is not null) CryptographicOperations.ZeroMemory(_sessionSecret);
     }
 
-    private Task CloseAsync() => _cts.CancelAsync();
+    private void LeaveUnpairedSlot()
+    {
+        if (!_countedUnpaired) return;
+        _countedUnpaired = false;
+        _ctx.Connections.LeaveUnpaired();
+    }
 
-    private ValueTask SendAsync(Envelope envelope, CancellationToken ct) => _writer.WriteAsync(envelope, ct);
+    /// <summary>Encerra a conexão; com motivo, manda Bye antes (sai pela fila, até 1 s).</summary>
+    private void Close(ByeReason? reason = null)
+    {
+        if (reason is { } r) _outbox.Enqueue(new Envelope { Bye = new Bye { Reason = r } });
+        _cts.Cancel();
+    }
 
-    private ValueTask SendErrorAsync(uint reqId, ErrorCode code, string message, CancellationToken ct) =>
-        SendAsync(new Envelope { ReqId = reqId, Error = new Error { Code = code, Message = message } }, ct);
+    private Task CloseWithByeAsync(ByeReason reason)
+    {
+        Close(reason);
+        return Task.CompletedTask;
+    }
+
+    private void Send(Envelope envelope) => _outbox.Enqueue(envelope);
+
+    private void SendError(uint reqId, ErrorCode code, string message) =>
+        Send(new Envelope { ReqId = reqId, Error = new Error { Code = code, Message = message } });
 
     private static Envelope Reply(Envelope request, Envelope response)
     {
@@ -523,13 +561,13 @@ internal sealed class ClientConnection
         Ready,
     }
 
-    private sealed class PairingAttempt(string clientId, string deviceName, Platform platform, string pin)
+    private sealed class PairingAttempt(string clientId, string deviceName, Platform platform, string pin, long startedTimestamp)
     {
         public string ClientId { get; } = clientId;
         public string DeviceName { get; } = deviceName;
         public Platform Platform { get; } = platform;
         public string Pin { get; } = pin;
-        public Spake2? Spake { get; set; }
+        public long StartedTimestamp { get; } = startedTimestamp;
         public Spake2Result? Result { get; set; }
     }
 }

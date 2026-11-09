@@ -52,7 +52,7 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
         {
             var pin = await _pins.NextPin.WaitAsync(Timeout);
             return alterPin?.Invoke(pin) ?? pin;
-        }, TestKdfIterations, _cts.Token).WaitAsync(Timeout);
+        }, ct: _cts.Token).WaitAsync(Timeout);
 
     private static Capabilities Caps() => new() { MaxDecodeStreams = 1, TouchPoints = 10, CursorOverlay = true };
 
@@ -136,6 +136,88 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Unpair_from_host_closes_active_session_immediately()
+    {
+        var id = NewIdentity("perdido");
+        await using var client = await Connect(id);
+        await Pair(client);
+        await client.OpenSessionAsync(Platform.Android, "test", Caps(), ct: _cts.Token).WaitAsync(Timeout);
+
+        var bye = client.WaitForAsync(Envelope.BodyOneofCase.Bye, _cts.Token);
+        Assert.True(await _ctx.UnpairAsync(id.ClientId));
+        Assert.Equal(ByeReason.Unpaired, (await bye.WaitAsync(Timeout)).Bye.Reason);
+
+        // O cliente ainda acha que está pareado, mas o host não aceita mais o certificado.
+        await using var again = await Connect(id);
+        var ex = await Assert.ThrowsAsync<HostErrorException>(() =>
+            again.OpenSessionAsync(Platform.Android, "test", Caps(), ct: _cts.Token).WaitAsync(Timeout));
+        Assert.Equal(ErrorCode.ErrorAuthUnpaired, ex.Error.Code);
+    }
+
+    [Fact]
+    public async Task Client_cannot_unpair_someone_else()
+    {
+        var victim = NewIdentity("vitima");
+        await using (var v = await Connect(victim)) await Pair(v);
+
+        await using var other = await PairedSession("outro");
+        var ex = await Assert.ThrowsAsync<HostErrorException>(() =>
+            other.RequestAsync(new Envelope { Unpair = new Unpair { ClientId = victim.ClientId } }).WaitAsync(Timeout));
+        Assert.Equal(ErrorCode.ErrorNotOwner, ex.Error.Code);
+        Assert.NotNull(_ctx.PairedClients.FindByClientId(victim.ClientId));
+    }
+
+    [Fact]
+    public async Task Cannot_take_over_client_id_paired_with_another_certificate()
+    {
+        var victim = NewIdentity("dono");
+        await using (var v = await Connect(victim)) await Pair(v);
+
+        await using var attacker = await Connect(NewIdentity("atacante"));
+        var ex = await Assert.ThrowsAsync<HostErrorException>(() => attacker.RequestAsync(new Envelope
+        {
+            PairStart = new PairStart { ClientId = victim.ClientId, DeviceName = "tablet do dono" },
+        }).WaitAsync(Timeout));
+        Assert.Equal(ErrorCode.ErrorInvalidArgument, ex.Error.Code);
+    }
+
+    [Fact]
+    public async Task Paired_client_can_pair_again_with_same_certificate()
+    {
+        var id = NewIdentity("repareia");
+        await using (var first = await Connect(id)) await Pair(first);
+
+        await using var second = await Connect(id);
+        Assert.NotNull(second.PairedHost);
+        await Pair(second); // ex.: o primeiro pareamento caiu antes do app gravar o host
+        await second.OpenSessionAsync(Platform.Android, "test", Caps(), ct: _cts.Token).WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task At_most_four_unpaired_connections()
+    {
+        var open = new List<ControlClient>();
+        try
+        {
+            for (var i = 0; i < ConnectionDirectory.MaxUnpaired; i++)
+            {
+                var c = await Connect(NewIdentity($"anon{i}"));
+                open.Add(c);
+                var expected = i + 1;
+                for (var t = 0; t < 200 && _ctx.Connections.UnpairedCount < expected; t++) await Task.Delay(10); // host já contou
+            }
+
+            await using var extra = await Connect(NewIdentity("anon-extra"));
+            await Assert.ThrowsAnyAsync<Exception>(() =>
+                extra.RequestAsync(new Envelope { PairStart = new PairStart { ClientId = "x" } }).WaitAsync(Timeout));
+        }
+        finally
+        {
+            foreach (var c in open) await c.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task Unpaired_client_cannot_open_session()
     {
         var id = NewIdentity("estranho");
@@ -185,7 +267,7 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
 
         public Task<string> NextPin => _next.Task;
 
-        public void Show(string deviceName, string pin) => _next.TrySetResult(pin);
+        public void Show(PairingPrompt prompt) => _next.TrySetResult(prompt.Pin);
 
         public void Clear() => _next = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
     }

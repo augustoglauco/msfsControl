@@ -192,7 +192,7 @@ message Bye {
 //   4. Host responde PairSpake{share = pB}.
 //   5. Cliente → PairConfirm{cA}; host verifica → PairConfirm{cB}; PairResult.
 // Identidades: A = client_id (cliente), B = host_id (host).
-// w = PBKDF2-SHA256(PIN, salt = "monrem-v1" ‖ client_id ‖ host_id, 100000, 40 bytes) mod n.
+// w = PBKDF2-SHA256(PIN, salt = "monrem-v1" ‖ client_id ‖ host_id, kdf_iterations, 40 bytes) mod n.
 // AAD das chaves de confirmação = SHA-256(cert DER do host) ‖ SHA-256(cert DER do cliente),
 // ambos os certificados vistos no handshake TLS (nunca enviados como campo).
 // Um intermediário com outro certificado gera AAD diferente → confirmação falha.
@@ -209,6 +209,7 @@ message PairStart {
 message PairChallenge {
   string host_id = 1;
   uint32 pin_digits = 2;        // 6
+  uint32 kdf_iterations = 3;    // iterações do PBKDF2 de w; o cliente aceita 1000..1000000
 }
 
 message PairSpake {
