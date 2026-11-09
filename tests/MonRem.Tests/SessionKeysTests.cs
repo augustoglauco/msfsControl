@@ -46,6 +46,25 @@ public class SessionKeysTests
     }
 
     [Fact]
+    public void BouncyCastle_ecdh_matches_platform_ecdh()
+    {
+        using var ours = SessionKeys.CreateEphemeral();
+        using var platform = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var p = platform.ExportParameters(false);
+        byte[] platformPublic = [0x04, .. p.Q.X!, .. p.Q.Y!];
+
+        var fromOurs = ours.Agree(platformPublic);
+
+        using var oursAsPlatform = ECDiffieHellman.Create(new ECParameters
+        {
+            Curve = ECCurve.NamedCurves.nistP256,
+            Q = new ECPoint { X = ours.PublicKey[1..33], Y = ours.PublicKey[33..] },
+        });
+        var fromPlatform = platform.DeriveRawSecretAgreement(oursAsPlatform.PublicKey);
+        Assert.Equal(fromPlatform, fromOurs);
+    }
+
+    [Fact]
     public void Rejects_bad_peer_key()
     {
         using var own = SessionKeys.CreateEphemeral();

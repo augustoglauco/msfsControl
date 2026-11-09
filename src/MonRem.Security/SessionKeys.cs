@@ -43,44 +43,14 @@ public static class SessionKeys
     private static readonly byte[] SessionInfo = "monrem-v1 session"u8.ToArray();
     private static readonly byte[] FlowLabel = "monrem-v1 flow"u8.ToArray();
 
-    public static ECDiffieHellman CreateEphemeral() => ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+    /// <summary>Par efêmero P-256 para o key_share do Hello/HelloAck.</summary>
+    public static EphemeralKey CreateEphemeral() => EphemeralKey.Generate();
 
-    public static byte[] ExportPublic(ECDiffieHellman ecdh)
+    public static byte[] ExportPublic(EphemeralKey key) => key.PublicKey;
+
+    public static byte[] DeriveSessionSecret(EphemeralKey own, ReadOnlySpan<byte> peerPublic, string sessionId)
     {
-        var p = ecdh.ExportParameters(includePrivateParameters: false);
-        var result = new byte[PublicKeyLength];
-        result[0] = 0x04;
-        p.Q.X!.CopyTo(result, 1);
-        p.Q.Y!.CopyTo(result, 33);
-        return result;
-    }
-
-    public static byte[] DeriveSessionSecret(ECDiffieHellman own, ReadOnlySpan<byte> peerPublic, string sessionId)
-    {
-        if (peerPublic.Length != PublicKeyLength || peerPublic[0] != 0x04)
-            throw new CryptographicException("key_share deve ser P-256 não comprimido (65 bytes)");
-
-        ECDiffieHellman peer;
-        try
-        {
-            // A importação valida que o ponto está na curva.
-            peer = ECDiffieHellman.Create(new ECParameters
-            {
-                Curve = ECCurve.NamedCurves.nistP256,
-                Q = new ECPoint { X = peerPublic[1..33].ToArray(), Y = peerPublic[33..].ToArray() },
-            });
-        }
-        catch (Exception ex) when (ex is PlatformNotSupportedException or ArgumentException)
-        {
-            // No Windows (CNG) um ponto fora da curva vira PlatformNotSupportedException; no Linux, CryptographicException.
-            throw new CryptographicException("key_share fora da curva P-256", ex);
-        }
-
-        byte[] shared;
-        using (peer)
-        {
-            shared = own.DeriveRawSecretAgreement(peer.PublicKey);
-        }
+        var shared = own.Agree(peerPublic);
         try
         {
             return HKDF.DeriveKey(HashAlgorithmName.SHA256, shared, 32, Encoding.UTF8.GetBytes(sessionId), SessionInfo);
