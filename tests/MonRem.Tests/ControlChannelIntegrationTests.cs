@@ -296,6 +296,32 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task App_session_flow_pairs_opens_and_loads_panels()
+    {
+        var id = NewIdentity("app-sessao");
+        await using (var first = await MonRem.Client.Core.AppSession.ConnectAsync("127.0.0.1", _server.BoundPort, id, _cts.Token).WaitAsync(Timeout))
+        {
+            Assert.True(first.NeedsPairing);
+            Assert.Equal(MonRem.Security.Certificates.Fingerprint(_ctx.HostCertificate), first.HostFingerprint);
+            await first.PairAsync("Tablet", async _ => await _pins.NextPin.WaitAsync(Timeout), _cts.Token).WaitAsync(Timeout);
+        }
+
+        await using var session = await MonRem.Client.Core.AppSession.ConnectAsync("127.0.0.1", _server.BoundPort, id, _cts.Token).WaitAsync(Timeout);
+        Assert.False(session.NeedsPairing);
+        await session.OpenAsync("test", Caps(), _cts.Token).WaitAsync(Timeout);
+        Assert.Equal("", session.SuggestedLayoutId); // aeronave falsa não casa com o layout do A320
+
+        var layouts = await session.GetLayoutsAsync(_cts.Token).WaitAsync(Timeout);
+        var panels = await session.LoadLayoutAsync(layouts[0].LayoutId, _cts.Token).WaitAsync(Timeout);
+        Assert.Equal("fcu", Assert.Single(panels).Id);
+
+        await using var runtime = session.CreateRuntime(panels[0]);
+        await runtime.StartAsync(_cts.Token).WaitAsync(Timeout);
+        await runtime.PressAsync(runtime.Widgets.Single(w => w.Model.Id == "ap1")).WaitAsync(Timeout);
+        Assert.Contains(_sim.Fired, f => f.Ref == "K:AP_MASTER");
+    }
+
+    [Fact]
     public async Task Aircraft_change_reports_matching_layout()
     {
         await using var client = await PairedSession("app-aeronave");

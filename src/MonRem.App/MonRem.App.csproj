@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- UI compartilhada do app (desktop e Android). A lógica fica em MonRem.Client.Core (testada). -->
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MonRem.Client.Core\MonRem.Client.Core.csproj" />
+  </ItemGroup>
+</Project>

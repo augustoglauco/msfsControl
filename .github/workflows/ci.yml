@@ -51,3 +51,36 @@ jobs:
         with:
           name: test-results-${{ matrix.os }}
           path: TestResults
+
+  app-desktop:
+    name: App desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet build src/MonRem.App.Desktop -c Release
+
+  app-android:
+    name: App Android (APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - run: dotnet workload install android
+      - run: dotnet publish src/MonRem.App.Android -c Release -o artifacts/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monrem-android-apk
+          path: artifacts/android/*-Signed.apk
