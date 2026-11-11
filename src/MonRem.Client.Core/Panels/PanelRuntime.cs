@@ -175,7 +175,8 @@ public sealed class PanelRuntime : IAsyncDisposable
 
     // ------------------------------------------------------------------ ações vindas da UI
 
-    public Task PressAsync(WidgetState w) => Run(w, w.Model.Press);
+    /// <summary>Toque no botão: <c>press_off</c> se ele está aceso e a tem; senão <c>press</c>.</summary>
+    public Task PressAsync(WidgetState w) => Run(w, w.Model.PressOff is not null && IsLit(w) ? w.Model.PressOff : w.Model.Press);
 
     public Task ReleaseAsync(WidgetState w) => Run(w, w.Model.Release);
 

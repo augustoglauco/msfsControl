@@ -379,6 +379,21 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task Client_reports_disconnect_when_host_closes_the_session()
+    {
+        var client = await PairedSession("queda");
+        var dropped = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.Disconnected += ex => dropped.TrySetResult(ex);
+
+        // Despareia a si mesmo: o host responde e fecha a conexão.
+        await client.RequestAsync(new Envelope { Unpair = new Unpair() }).WaitAsync(Timeout);
+        await dropped.Task.WaitAsync(Timeout);
+
+        // DisposeAsync não dispara Disconnected de novo nem lança.
+        await client.DisposeAsync();
+    }
+
     private async Task<ControlClient> PairedSession(string name)
     {
         var client = await Connect(NewIdentity(name));

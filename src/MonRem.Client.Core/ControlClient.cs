@@ -71,6 +71,12 @@ public sealed class ControlClient : IAsyncDisposable
     /// <summary>Mensagens sem req_id vindas do host (SimValues, SimStatus, Bye...).</summary>
     public event Action<Envelope>? Notification;
 
+    /// <summary>
+    /// A conexão caiu (host fechou, rede sumiu ou sem Pong em 5 s). Não dispara no DisposeAsync.
+    /// Quem usa o cliente decide reconectar.
+    /// </summary>
+    public event Action<Exception>? Disconnected;
+
     /// <summary>Último RTT medido pelo keepalive.</summary>
     public TimeSpan? LastRtt { get; private set; }
 
@@ -281,6 +287,17 @@ public sealed class ControlClient : IAsyncDisposable
             _closedError = error;
             foreach (var p in _pending.Values) p.TrySetException(error);
             _inbox.Writer.TryComplete();
+            if (!_cts.IsCancellationRequested)
+            {
+                try
+                {
+                    Disconnected?.Invoke(error);
+                }
+                catch (Exception)
+                {
+                    // Erro em quem assina não pode derrubar o laço.
+                }
+            }
         }
     }
 
@@ -298,9 +315,16 @@ public sealed class ControlClient : IAsyncDisposable
                 await Task.Delay(ProtocolConstants.PingInterval, ct).ConfigureAwait(false);
             }
         }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // Sem Pong em 5 s (ex.: celular dormiu, Wi-Fi caiu): a conexão está morta mesmo que o TCP
+            // não tenha avisado. Fecha o socket para a leitura terminar e o Disconnected disparar.
+            try { _ssl.Dispose(); } catch (Exception) { }
+            try { _tcp.Dispose(); } catch (Exception) { }
+        }
         catch (Exception)
         {
-            // Sem Pong em 5 s, conexão fechada ou descartada: quem usa o cliente reconecta com resume.
+            // DisposeAsync em andamento.
         }
     }
 

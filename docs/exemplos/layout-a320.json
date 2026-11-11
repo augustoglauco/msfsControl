@@ -1,7 +1,9 @@
 {
-  // Exemplo de layout do app. Copie para %ProgramData%\\MonRem\\layouts\\ e edite.
+  // Exemplo de layout do app. Copie para %ProgramData%\MonRem\layouts\ e edite.
+  // Só usa SimVars (A:) e eventos (K:) padrão do MSFS, que funcionam em qualquer avião.
+  // L:, B: e H: dependem do avião: veja docs/paineis-do-app.md.
   "id": "a320",
-  "name": "A320 FCU",
+  "name": "A320",
   "aircraft": "A320|A20N",
   "panels": [
     {
@@ -9,31 +11,35 @@
       "name": "FCU",
       "width": 1000, "height": 400,
       "widgets": [
-        { "type": "button", "id": "ap1", "label": "AP1", "x": 10, "y": 10, "w": 100, "h": 60,
-          "press": { "fire": "K:AP_MASTER" },
-          "source": "L:AP1_ACTIVE", "when": "> 0.5" },
+        { "type": "button", "id": "ap", "label": "AP", "x": 10, "y": 10, "w": 100, "h": 60,
+          "source": "A:AUTOPILOT MASTER,bool",
+          "press": { "fire": "K:AUTOPILOT_ON" }, "press_off": { "fire": "K:AUTOPILOT_OFF" } },
         { "type": "display", "id": "alt", "x": 120, "y": 10, "w": 200, "h": 60,
           "source": "A:AUTOPILOT ALTITUDE LOCK VAR,feet", "format": "00000", "epsilon": 1 },
         { "type": "encoder", "id": "hdg", "label": "HDG", "x": 330, "y": 10, "w": 120, "h": 120,
-          "inc": { "fire": "K:HEADING_BUG_INC" }, "dec": { "fire": "K:HEADING_BUG_DEC" },
-          "push": { "rpn": "(>H:A320_FCU_HDG_PUSH)" } },
-        { "type": "toggle", "id": "bat", "label": "BAT 1", "x": 460, "y": 10, "w": 100, "h": 60,
-          "source": "B:ELECTRICAL_Battery_1",
-          "on": { "set": "B:ELECTRICAL_Battery_1", "value": 1 }, "off": { "set": "B:ELECTRICAL_Battery_1", "value": 0 } },
-        { "type": "selector", "id": "nd", "label": "ND MODE", "x": 570, "y": 10, "w": 200, "h": 80,
-          "source": "L:ND_MODE",
+          "inc": { "fire": "K:HEADING_BUG_INC" }, "dec": { "fire": "K:HEADING_BUG_DEC" } },
+        { "type": "display", "id": "hdg-val", "x": 460, "y": 70, "w": 100, "h": 60,
+          "source": "A:AUTOPILOT HEADING LOCK DIR,degrees", "format": "000" },
+        { "type": "toggle", "id": "bat", "label": "BATTERY", "x": 460, "y": 0, "w": 100, "h": 60,
+          "source": "A:ELECTRICAL MASTER BATTERY,bool",
+          "on": { "fire": "K:MASTER_BATTERY_ON" }, "off": { "fire": "K:MASTER_BATTERY_OFF" } },
+        { "type": "selector", "id": "flaps", "label": "FLAPS", "x": 570, "y": 10, "w": 200, "h": 80,
+          "source": "A:FLAPS HANDLE INDEX,number",
           "positions": [
-            { "label": "LS",  "value": 0, "action": { "set": "L:ND_MODE", "value": 0 } },
-            { "label": "VOR", "value": 1, "action": { "set": "L:ND_MODE", "value": 1 } },
-            { "label": "NAV", "value": 2, "action": { "set": "L:ND_MODE", "value": 2 } },
+            { "label": "0",    "value": 0, "action": { "fire": "K:FLAPS_UP" } },
+            { "label": "1",    "value": 1, "action": { "fire": "K:FLAPS_1" } },
+            { "label": "2",    "value": 2, "action": { "fire": "K:FLAPS_2" } },
+            { "label": "3",    "value": 3, "action": { "fire": "K:FLAPS_3" } },
+            { "label": "FULL", "value": 4, "action": { "fire": "K:FLAPS_DOWN" } },
           ] },
         { "type": "gauge", "id": "n1", "label": "N1", "x": 780, "y": 10, "w": 200, "h": 200,
           "source": "A:TURB ENG N1:1,percent", "min": 0, "max": 110, "unit": "%" },
-        { "type": "annunciator", "x": 10, "y": 300, "w": 100, "h": 40, "label": "MASTER WARN",
-          "source": "L:MASTER_WARNING", "color": "#FF3B30" },
-        { "type": "label", "x": 120, "y": 300, "w": 200, "h": 40, "label": "FCU" },
+        { "type": "annunciator", "x": 10, "y": 300, "w": 120, "h": 40, "label": "PARK BRK",
+          "source": "A:BRAKE PARKING POSITION,bool", "color": "#FF3B30" },
+        { "type": "button", "id": "gear", "label": "GEAR", "x": 140, "y": 300, "w": 100, "h": 60,
+          "source": "A:GEAR HANDLE POSITION,bool",
+          "press": { "fire": "K:GEAR_DOWN" }, "press_off": { "fire": "K:GEAR_UP" } },
       ],
     },
   ],
 }
-

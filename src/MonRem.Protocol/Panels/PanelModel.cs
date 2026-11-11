@@ -79,6 +79,9 @@ public sealed record WidgetModel
     public double? FontSize { get; init; }
 
     public PanelAction? Press { get; init; }
+
+    /// <summary>Botão: ação no toque quando ele está aceso (ex.: AUTOPILOT_OFF). Sem ela, usa <see cref="Press"/>.</summary>
+    public PanelAction? PressOff { get; init; }
     public PanelAction? Release { get; init; }
     public PanelAction? On { get; init; }
     public PanelAction? Off { get; init; }
@@ -180,7 +183,7 @@ public static class PanelJson
 
         IEnumerable<(string Name, PanelAction? Action)> actions = w.Type switch
         {
-            WidgetTypes.Button => [("press", w.Press), ("release", w.Release)],
+            WidgetTypes.Button => [("press", w.Press), ("press_off", w.PressOff), ("release", w.Release)],
             WidgetTypes.Toggle => [("on", w.On), ("off", w.Off)],
             WidgetTypes.Encoder => [("inc", w.Inc), ("dec", w.Dec), ("push", w.Push)],
             _ => [],
@@ -192,6 +195,7 @@ public static class PanelJson
             if (problem is not null) yield return $"{name}: {problem}";
         }
         if (w.Type == WidgetTypes.Button && w.Press is null) yield return "botão sem press";
+        if (w.Type == WidgetTypes.Button && w.PressOff is not null && w.Source is null) yield return "press_off precisa de source (para saber se está aceso)";
         if (w.Type == WidgetTypes.Toggle && (w.On is null || w.Off is null)) yield return "toggle precisa de on e off";
         if (w.Type == WidgetTypes.Encoder && (w.Inc is null || w.Dec is null)) yield return "encoder precisa de inc e dec";
         if (w.Type == WidgetTypes.Selector)

@@ -21,6 +21,7 @@ public sealed class AppSession : IAsyncDisposable
         Port = port;
         Link = new ControlClientSimLink(client);
         _client.Notification += OnNotification;
+        _client.Disconnected += ex => Disconnected?.Invoke(ex);
     }
 
     public string Address { get; }
@@ -46,6 +47,9 @@ public sealed class AppSession : IAsyncDisposable
     public event Action<IReadOnlyList<LayoutSummary>>? LayoutsChanged;
 
     public event Action<SimStatus>? SimStatusChanged;
+
+    /// <summary>Conexão perdida (o app pode reconectar com <see cref="ConnectAsync"/> ao mesmo endereço).</summary>
+    public event Action<Exception>? Disconnected;
 
     public static async Task<AppSession> ConnectAsync(string address, int port, ClientIdentity identity, CancellationToken ct)
     {

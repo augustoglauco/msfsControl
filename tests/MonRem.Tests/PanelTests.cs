@@ -204,6 +204,50 @@ public class PanelTests
     }
 
     [Fact]
+    public void Example_layout_in_docs_is_valid()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "exemplos", "layout-a320.json");
+        var layout = PanelJson.ParseLayout(File.ReadAllText(path));
+        Assert.Empty(PanelJson.Validate(layout));
+        // O exemplo só pode usar o que o host suporta sem módulo WASM nem Input Events.
+        var refs = layout.Panels.SelectMany(p => p.Widgets).SelectMany(w => new[] { w.Source }
+            .Concat(new[] { w.Press, w.PressOff, w.Release, w.On, w.Off, w.Inc, w.Dec, w.Push }.Concat(w.Positions.Select(x => x.Action))
+                .Where(a => a is not null).Select(a => a!.Fire ?? a.Set ?? (a.Rpn is null ? null : "RPN:"))))
+            .Where(r => r is not null).ToList();
+        Assert.All(refs, r => Assert.True(r!.StartsWith("A:", StringComparison.Ordinal) || r.StartsWith("K:", StringComparison.Ordinal), r));
+    }
+
+    [Fact]
+    public async Task Press_off_is_used_when_button_is_lit()
+    {
+        var panel = new PanelModel
+        {
+            Id = "p",
+            Widgets =
+            [
+                new WidgetModel
+                {
+                    Type = "button", Id = "ap", X = 0, Y = 0, W = 100, H = 50, Source = "A:AUTOPILOT MASTER,bool",
+                    Press = new PanelAction { Fire = "K:AUTOPILOT_ON" }, PressOff = new PanelAction { Fire = "K:AUTOPILOT_OFF" },
+                },
+            ],
+        };
+        var link = new FakeLink();
+        await using var rt = new PanelRuntime(panel, link);
+        await rt.StartAsync(CancellationToken.None);
+        var ap = rt.Widgets[0];
+
+        await rt.PressAsync(ap);
+        link.Push(link.Subscriptions[0], ("A:AUTOPILOT MASTER,bool", 1));
+        await rt.PressAsync(ap);
+        link.Push(link.Subscriptions[0], ("A:AUTOPILOT MASTER,bool", 0));
+        await rt.PressAsync(ap);
+
+        Assert.Equal(["K:AUTOPILOT_ON", "K:AUTOPILOT_OFF", "K:AUTOPILOT_ON"], link.Fired.Select(f => f.Ref).ToArray());
+        Assert.Contains(PanelJson.ValidateWidget(panel, panel.Widgets[0] with { Source = null }), p => p.Contains("press_off", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Shared_value_rules_match_esp32_semantics()
     {
         Assert.True(Comparison.TryParse(">= 2", out var c));

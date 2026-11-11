@@ -30,7 +30,7 @@ Cada widget tem `x`, `y`, `w`, `h` nessa área.
 
 | Tipo | Mostra | Toque | Campos |
 | --- | --- | --- | --- |
-| `button` | luz acesa conforme `source` + `when` | `press` (e `release`) | `label` |
+| `button` | luz acesa conforme `source` + `when` | `press` (e `release`); aceso e com `press_off`: `press_off` | `label` |
 | `toggle` | estado de `source` (ou local, sem `source`) | `on` / `off` | `label` |
 | `encoder` | — | girar: `inc` / `dec` por detente; toque no centro: `push` | `label` |
 | `selector` | posição pelo valor mais próximo de `source` | toque numa posição: a `action` dela | `positions[]` com `label`, `value`, `action` |
@@ -46,6 +46,23 @@ Comuns: `id`, `source`, `when` (padrão: aceso se ≠ 0), `epsilon` (variação 
 Iguais às dos perfis ESP32 ([perfis-de-painel.md](perfis-de-painel.md)): cada ação tem exatamente um de
 `fire` (+ `args`), `set` + `value` ou `rpn`; condições `when` como `"> 0.5"`; formatos .NET como
 `"00000"` ou `"HDG {0:000}"`.
+
+## Variáveis: o que funciona hoje
+
+| Prefixo | Exemplo | Estado |
+| --- | --- | --- |
+| `A:` SimVar | `A:AUTOPILOT MASTER,bool` | funciona em qualquer avião |
+| `K:` evento | `K:AUTOPILOT_ON`, `K:HEADING_BUG_INC` | funciona (até 1 parâmetro) |
+| `L:` variável local | `L:A32NX_...` | funciona, mas **cada avião tem as suas**: confira no Developer Mode do MSFS ou na documentação do avião. Nome errado não dá erro, só fica em 0 |
+| `B:` Input Event | `B:ELECTRICAL_Battery_1` | ainda não implementado no host |
+| `H:` e `RPN:` | `(>H:...)` | exigem o módulo WASimCommander instalado |
+
+Botões que ligam e desligam (AP, trem de pouso) usam `press` + `press_off` com uma `source` que indica o estado:
+
+```jsonc
+{ "type": "button", "label": "AP", "source": "A:AUTOPILOT MASTER,bool",
+  "press": { "fire": "K:AUTOPILOT_ON" }, "press_off": { "fire": "K:AUTOPILOT_OFF" } }
+```
 
 ## Problemas
 

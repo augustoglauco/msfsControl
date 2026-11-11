@@ -33,6 +33,7 @@ public sealed class Shell : UserControl
     private AppSession? _session;
     private readonly List<PanelRuntime> _runtimes = [];
     private CancellationTokenSource _cts = new();
+    private string? _currentLayoutId;
 
     public Shell()
     {
@@ -137,7 +138,7 @@ public sealed class Shell : UserControl
 
     // ------------------------------------------------------------------ conexão e pareamento
 
-    private async Task ConnectAsync(string address, int port)
+    private async Task ConnectAsync(string address, int port, string? layoutId = null)
     {
         await CloseSessionAsync();
         _cts = new CancellationTokenSource();
@@ -151,9 +152,13 @@ public sealed class Shell : UserControl
                 await session.PairAsync(DeviceName(), _ => AskPinAsync(session.HostFingerprint), _cts.Token);
             }
             await session.OpenAsync(AppVersion, Capabilities(), _cts.Token);
-            session.AircraftChanged += layoutId => Dispatcher.UIThread.Post(() => OnAircraftChanged(layoutId));
+            session.AircraftChanged += id => Dispatcher.UIThread.Post(() => OnAircraftChanged(id));
             session.LayoutsChanged += layouts => Dispatcher.UIThread.Post(() => _ = ShowPanelsAsync(null));
-            await ShowPanelsAsync(session.SuggestedLayoutId);
+            session.Disconnected += _ => Dispatcher.UIThread.Post(() =>
+            {
+                if (ReferenceEquals(_session, session)) _ = ReconnectAsync(address, port);
+            });
+            await ShowPanelsAsync(layoutId ?? session.SuggestedLayoutId);
         }
         catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or HostErrorException
                                        or PairingFailedException or OperationCanceledException or System.Security.Authentication.AuthenticationException)
@@ -161,6 +166,67 @@ public sealed class Shell : UserControl
             await CloseSessionAsync();
             ShowHosts(Explain(ex));
         }
+    }
+
+    /// <summary>
+    /// Conexão caiu (celular dormiu, Wi-Fi oscilou, host reiniciou): tenta de novo sozinho, com espera crescente,
+    /// até conseguir ou o usuário desistir. Volta para o mesmo layout.
+    /// </summary>
+    private async Task ReconnectAsync(string address, int port)
+    {
+        var layoutId = _currentLayoutId;
+        await CloseSessionAsync();
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+
+        var status = new TextBlock { Text = $"Conexão perdida. Reconectando a {address}...", FontSize = 18, HorizontalAlignment = HorizontalAlignment.Center };
+        var cancel = new Button { Content = "Voltar para a lista", HorizontalAlignment = HorizontalAlignment.Center };
+        cancel.Click += (_, _) => cts.Cancel();
+        _content.Content = new StackPanel
+        {
+            Spacing = 16,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { status, cancel },
+        };
+
+        var delays = new[] { 1, 2, 3, 5, 5, 10 };
+        for (var attempt = 0; !cts.IsCancellationRequested; attempt++)
+        {
+            try
+            {
+                var session = await AppSession.ConnectAsync(address, port, Identity, cts.Token);
+                if (session.NeedsPairing)
+                {
+                    // O host esqueceu este aparelho: precisa parear de novo pela lista.
+                    await session.DisposeAsync();
+                    ShowHosts("O host não reconhece mais este aparelho. Pareie de novo.");
+                    return;
+                }
+                await session.DisposeAsync();
+                if (ReferenceEquals(_cts, cts)) await ConnectAsync(address, port, layoutId);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or HostErrorException
+                                           or System.Security.Authentication.AuthenticationException)
+            {
+                var wait = delays[Math.Min(attempt, delays.Length - 1)];
+                status.Text = $"Conexão perdida. Nova tentativa em {wait} s... ({ex.Message})";
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(wait), cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                status.Text = $"Conexão perdida. Reconectando a {address}...";
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+        if (ReferenceEquals(_cts, cts)) ShowHosts();
     }
 
     private Task<string> AskPinAsync(string fingerprint)
@@ -211,6 +277,7 @@ public sealed class Shell : UserControl
         }
 
         var chosen = layouts.FirstOrDefault(l => l.LayoutId == layoutId) ?? layouts[0];
+        _currentLayoutId = chosen.LayoutId;
         var panels = await session.LoadLayoutAsync(chosen.LayoutId, _cts.Token);
         await DisposeRuntimesAsync();
 

@@ -14,6 +14,12 @@ namespace MonRem.App.Android;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
 public class MainActivity : AvaloniaMainActivity
 {
+    protected override void OnCreate(global::Android.OS.Bundle? savedInstanceState)
+    {
+        base.OnCreate(savedInstanceState);
+        // Painel de cockpit: a tela não pode apagar no meio do voo.
+        Window?.AddFlags(global::Android.Views.WindowManagerFlags.KeepScreenOn);
+    }
 }
 
 [Application]
