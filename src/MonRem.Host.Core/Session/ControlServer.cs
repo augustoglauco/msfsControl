@@ -58,11 +58,16 @@ public sealed class ControlServer(HostContext context)
         {
             listener.Start();
         }
-        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse)
+        catch (SocketException ex)
         {
+            var hint = ex.SocketErrorCode switch
+            {
+                SocketError.AddressAlreadyInUse => "porta em uso por outro processo (veja: Get-NetTCPConnection -LocalPort <porta>)",
+                SocketError.AccessDenied => "acesso negado: porta reservada pelo Windows (netsh interface ipv4 show excludedportrange protocol=tcp) ou bloqueada por antivírus",
+                _ => "erro de rede",
+            };
             throw new InvalidOperationException(
-                $"A porta {endpoint.Port} já está em uso. Provavelmente outro monrem-host está aberto " +
-                $"(Get-Process monrem-host | Stop-Process) ou mude MonRem:ControlPort.", ex);
+                $"não foi possível abrir {endpoint}: {hint}. Erro do sistema: {ex.SocketErrorCode} ({ex.NativeErrorCode}) {ex.Message}", ex);
         }
         BoundPort = ((IPEndPoint)listener.LocalEndpoint).Port;
         _logger.LogInformation("Canal de controle ouvindo em {Endpoint}", listener.LocalEndpoint);
