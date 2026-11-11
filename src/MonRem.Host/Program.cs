@@ -7,7 +7,16 @@ using MonRem.Host.Core.Security;
 using MonRem.Host.Core.Session;
 using MonRem.Host.Core.Sim;
 
-var builder = Host.CreateApplicationBuilder(args);
+// Raiz de conteúdo = pasta do executável (não a pasta atual) e sem observar o appsettings.json:
+// o padrão do .NET cria um observador de arquivos na pasta atual, que trava em pastas de rede/WSL.
+var hostConfig = new ConfigurationManager();
+hostConfig.AddInMemoryCollection(new Dictionary<string, string?> { ["hostBuilder:reloadConfigOnChange"] = "false" });
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+    Configuration = hostConfig,
+});
 builder.Services.Configure<MonRemHostOptions>(builder.Configuration.GetSection(MonRemHostOptions.Section));
 
 #if WINDOWS_SERVICE
