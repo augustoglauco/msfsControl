@@ -54,7 +54,7 @@ Iguais às dos perfis ESP32 ([perfis-de-painel.md](perfis-de-painel.md)): cada a
 | `A:` SimVar | `A:AUTOPILOT MASTER,bool` | funciona em qualquer avião |
 | `K:` evento | `K:AUTOPILOT_ON`, `K:HEADING_BUG_INC` | funciona (até 1 parâmetro) |
 | `L:` variável local | `L:A32NX_...` | funciona, mas **cada avião tem as suas**: confira no Developer Mode do MSFS ou na documentação do avião. Nome errado não dá erro, só fica em 0 |
-| `B:` Input Event | `B:ELECTRICAL_Battery_1` | ainda não implementado no host |
+| `B:` Input Event | `B:ELECTRICAL_Battery_1` | funciona; nome resolvido por aeronave (lista muda ao trocar de avião) |
 | `H:` e `RPN:` | `(>H:...)` | exigem o módulo WASimCommander instalado |
 
 Botões que ligam e desligam (AP, trem de pouso) usam `press` + `press_off` com uma `source` que indica o estado:

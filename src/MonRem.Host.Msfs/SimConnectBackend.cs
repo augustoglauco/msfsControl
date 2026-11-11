@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.FlightSimulator.SimConnect;
@@ -13,8 +14,7 @@ namespace MonRem.Host.Msfs;
 /// Cada variável assinada vira uma data definition com período VISUAL_FRAME + flag CHANGED.
 /// </summary>
 /// <remarks>
-/// Pendências conhecidas (próxima iteração): Input Events (B:) e eventos K: com mais de 1 parâmetro
-/// (TransmitClientEvent_EX1). Ambos respondem "não suportado" por enquanto.
+/// Pendências conhecidas (próxima iteração): eventos K: com mais de 1 parâmetro (TransmitClientEvent_EX1).
 /// </remarks>
 public sealed class SimConnectBackend : ISimConnection, IDisposable
 {
@@ -31,6 +31,16 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
     private readonly Dictionary<string, VarRegistration> _vars = [];
     private readonly Dictionary<uint, VarRegistration> _varsByDefinition = [];
     private readonly Dictionary<string, uint> _events = [];
+
+    // Input Events (B:): resolvidos por nome -> hash via EnumerateInputEvents (próprios de cada aeronave).
+    private readonly Dictionary<string, InputEventDesc> _inputEventsByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, InputEventSub> _inputEventSubsByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<ulong, InputEventSub> _inputEventSubsByHash = [];
+    private readonly List<TaskCompletionSource<IReadOnlyList<SimInputEvent>>> _pendingInputEventLists = [];
+    private bool _inputEventsEnumerated;
+    private bool _inputEventEnumerateInFlight;
+    private uint? _inputEventsRequestId;
+
     private volatile bool _stopping;
     private uint _nextId = FirstDynamicId;
     private SimConnect? _sim;
@@ -54,12 +64,15 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
     public bool Supports(SimRef reference, SimOperation operation) => (reference.Kind, operation) switch
     {
         (SimRefKind.A or SimRefKind.L, SimOperation.Read or SimOperation.Set) => true,
+        (SimRefKind.B, SimOperation.Read or SimOperation.Set or SimOperation.Fire) => true,
         (SimRefKind.K, SimOperation.Fire) => true,
-        _ => false, // B: (Input Events) ainda não implementado
+        _ => false,
     };
 
     public IDisposable Subscribe(SimRef reference, Action<SimDatum> onValue)
     {
+        if (reference.Kind == SimRefKind.B) return SubscribeInputEvent(reference, onValue);
+
         VarRegistration reg;
         bool firstListener;
         lock (_lock)
@@ -84,6 +97,8 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
     public Task SetAsync(SimRef reference, SimDatum value, CancellationToken ct)
     {
         if (!IsAvailable) throw new SimException(ErrorCode.ErrorSimNotConnected, "MSFS não conectado");
+        if (reference.Kind == SimRefKind.B) return SetInputEventAsync(reference, value, ct);
+
         VarRegistration reg;
         bool created;
         lock (_lock)
@@ -118,6 +133,12 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
     public Task FireAsync(SimRef reference, IReadOnlyList<long> args, CancellationToken ct)
     {
         if (!IsAvailable) throw new SimException(ErrorCode.ErrorSimNotConnected, "MSFS não conectado");
+        if (reference.Kind == SimRefKind.B)
+        {
+            // Input Event "disparado": equivale a escrever o valor (1 por padrão, como um botão momentâneo).
+            var value = args.Count > 0 ? (double)args[0] : 1.0;
+            return SetInputEventAsync(reference, SimDatum.Of(value), ct);
+        }
         if (args.Count > 1)
             throw new SimException(ErrorCode.ErrorInvalidArgument, "K: com mais de 1 parâmetro ainda não suportado (TransmitClientEvent_EX1)");
 
@@ -147,8 +168,18 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
         return WithTimeout(tcs.Task, ct);
     }
 
-    public Task<IReadOnlyList<SimInputEvent>> ListInputEventsAsync(CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<SimInputEvent>>([]); // Input Events: próxima iteração
+    public Task<IReadOnlyList<SimInputEvent>> ListInputEventsAsync(CancellationToken ct)
+    {
+        if (!IsAvailable) throw new SimException(ErrorCode.ErrorSimNotConnected, "MSFS não conectado");
+        var tcs = new TaskCompletionSource<IReadOnlyList<SimInputEvent>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_lock) _pendingInputEventLists.Add(tcs);
+        Enqueue(sc => EnsureInputEventsEnumerated(sc, force: true), ex =>
+        {
+            lock (_lock) _pendingInputEventLists.Remove(tcs);
+            tcs.TrySetException(ex);
+        });
+        return WithTimeout(tcs.Task, ct);
+    }
 
     public void Dispose()
     {
@@ -165,6 +196,18 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
         try
         {
             await task.WaitAsync(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            throw new SimException(ErrorCode.ErrorSimNotConnected, "o MSFS não respondeu em 2 s");
+        }
+    }
+
+    private static async Task<T> WithTimeout<T>(Task<T> task, CancellationToken ct)
+    {
+        try
+        {
+            return await task.WaitAsync(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -247,6 +290,12 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
             RegisterAircraftDefinition(s);
             RequestAircraft(s);
 
+            // Input Events: um struct double e um de string, por tipo de evento (ver SIMCONNECT_INPUT_EVENT_TYPE).
+            s.RegisterStruct<SIMCONNECT_RECV_GET_INPUT_EVENT, double>((Enum)SIMCONNECT_INPUT_EVENT_TYPE.DOUBLE);
+            s.RegisterStruct<SIMCONNECT_RECV_GET_INPUT_EVENT, SimConnect.InputEventString>((Enum)SIMCONNECT_INPUT_EVENT_TYPE.STRING);
+            s.RegisterStruct<SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT, double>((Enum)SIMCONNECT_INPUT_EVENT_TYPE.DOUBLE);
+            s.RegisterStruct<SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT, SimConnect.InputEventString>((Enum)SIMCONNECT_INPUT_EVENT_TYPE.STRING);
+
             List<VarRegistration> all;
             lock (_lock)
             {
@@ -255,6 +304,8 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
             }
             // Re-registra todas as definições: com pedido de dados as que têm ouvintes, só a definição as de escrita.
             foreach (var reg in all) Register(s, reg, request: reg.Listeners.Count > 0);
+
+            if (HasInputEventWork()) EnsureInputEventsEnumerated(s, force: true);
         };
 
         sc.OnRecvQuit += (_, _) =>
@@ -301,6 +352,63 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
             foreach (var l in listeners) l(datum);
         };
 
+        sc.OnRecvEnumerateInputEvents += (s, data) =>
+        {
+            List<TaskCompletionSource<IReadOnlyList<SimInputEvent>>> pendingLists;
+            List<InputEventSub> toSubscribe = [];
+            List<SimInputEvent> list = [];
+            lock (_lock)
+            {
+                _inputEventsByName.Clear();
+                foreach (var o in data.rgData)
+                {
+                    var d = (SIMCONNECT_INPUT_EVENT_DESCRIPTOR)o;
+                    _inputEventsByName[d.Name] = new InputEventDesc(d.Hash, d.eType);
+                    list.Add(new SimInputEvent { Name = d.Name, Type = d.eType == SIMCONNECT_INPUT_EVENT_TYPE.STRING ? "string" : "double" });
+                }
+                _inputEventsEnumerated = true;
+                _inputEventEnumerateInFlight = false;
+
+                foreach (var sub in _inputEventSubsByName.Values)
+                {
+                    if (sub.Hash is not null) continue;
+                    if (!_inputEventsByName.TryGetValue(sub.Name, out var desc))
+                    {
+                        _logger.LogDebug("B:{Name} não existe na aeronave atual", sub.Name);
+                        continue;
+                    }
+                    sub.Hash = desc.Hash;
+                    sub.Type = desc.Type;
+                    _inputEventSubsByHash[desc.Hash] = sub;
+                    if (sub.Listeners.Count > 0) toSubscribe.Add(sub);
+                }
+
+                pendingLists = [.. _pendingInputEventLists];
+                _pendingInputEventLists.Clear();
+            }
+
+            foreach (var sub in toSubscribe) s.SubscribeInputEvent(sub.Hash!.Value);
+            foreach (var p in pendingLists) p.TrySetResult(list);
+        };
+
+        sc.OnRecvSubscribeInputEvent += (_, data) =>
+        {
+            InputEventSub? sub;
+            lock (_lock) _inputEventSubsByHash.TryGetValue(data.Hash, out sub);
+            if (sub is null) return;
+
+            var datum = data.eType == SIMCONNECT_INPUT_EVENT_TYPE.STRING
+                ? SimDatum.Of(((SimConnect.InputEventString)data.Value[0]).value)
+                : SimDatum.Of((double)data.Value[0]);
+            Action<SimDatum>[] listeners;
+            lock (_lock)
+            {
+                sub.Last = datum;
+                listeners = [.. sub.Listeners];
+            }
+            foreach (var l in listeners) l(datum);
+        };
+
         sc.OnRecvEvent += (s, data) =>
         {
             switch ((SystemEventId)data.uEventID)
@@ -310,6 +418,7 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
                     SystemEvent?.Invoke(SimSystemEventType.SimSystemEventSimStart);
                     RequestAircraft(s);
                     RequestAllData(s);
+                    ReenumerateInputEvents(s);
                     break;
                 case SystemEventId.SimStop:
                     SetStatus(Status with { InFlight = false });
@@ -340,7 +449,26 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
             }
             RequestAircraft(s);
             RequestAllData(s);
+            ReenumerateInputEvents(s);
         };
+    }
+
+    /// <summary>Limpa o cache de Input Events (são por aeronave) e pede uma nova enumeração.</summary>
+    private void ReenumerateInputEvents(SimConnect sc)
+    {
+        lock (_lock)
+        {
+            _inputEventsByName.Clear();
+            _inputEventsEnumerated = false;
+            foreach (var sub in _inputEventSubsByName.Values) sub.Hash = null;
+            _inputEventSubsByHash.Clear();
+        }
+        if (HasInputEventWork()) EnsureInputEventsEnumerated(sc, force: true);
+    }
+
+    private bool HasInputEventWork()
+    {
+        lock (_lock) return _inputEventSubsByName.Values.Any(s => s.Listeners.Count > 0) || _pendingInputEventLists.Count > 0;
     }
 
     /// <summary>
@@ -407,6 +535,115 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
         });
     }
 
+    // ------------------------------------------------------------------ Input Events (B:)
+
+    private IDisposable SubscribeInputEvent(SimRef reference, Action<SimDatum> onValue)
+    {
+        InputEventSub sub;
+        bool firstListener;
+        ulong? hash;
+        lock (_lock)
+        {
+            if (!_inputEventSubsByName.TryGetValue(reference.Name, out sub!))
+            {
+                sub = new InputEventSub(reference.Name);
+                _inputEventSubsByName[reference.Name] = sub;
+                if (_inputEventsByName.TryGetValue(reference.Name, out var desc))
+                {
+                    sub.Hash = desc.Hash;
+                    sub.Type = desc.Type;
+                    _inputEventSubsByHash[desc.Hash] = sub;
+                }
+            }
+            firstListener = sub.Listeners.Count == 0;
+            sub.Listeners.Add(onValue);
+            hash = sub.Hash;
+        }
+
+        if (firstListener)
+        {
+            if (hash is { } h) Enqueue(sc => sc.SubscribeInputEvent(h));
+            else Enqueue(sc => EnsureInputEventsEnumerated(sc, force: false));
+        }
+        else if (sub.Last is { } last) onValue(last);
+
+        return new Unsubscriber(() => UnsubscribeInputEvent(sub, onValue));
+    }
+
+    private void UnsubscribeInputEvent(InputEventSub sub, Action<SimDatum> listener)
+    {
+        bool last;
+        ulong? hash;
+        lock (_lock)
+        {
+            sub.Listeners.Remove(listener);
+            last = sub.Listeners.Count == 0;
+            hash = sub.Hash;
+            if (last)
+            {
+                _inputEventSubsByName.Remove(sub.Name);
+                if (hash is { } h) _inputEventSubsByHash.Remove(h);
+            }
+        }
+        if (!last || hash is not { } unsubHash) return;
+        Enqueue(sc => sc.UnsubscribeInputEvent(unsubHash));
+    }
+
+    private Task SetInputEventAsync(SimRef reference, SimDatum value, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Enqueue(sc => SetInputEventQueued(sc, reference, value, tcs, retried: false), ex => tcs.TrySetException(ex));
+        return WithTimeout(tcs.Task, ct);
+    }
+
+    private void SetInputEventQueued(SimConnect sc, SimRef reference, SimDatum value, TaskCompletionSource tcs, bool retried)
+    {
+        bool found;
+        InputEventDesc desc;
+        lock (_lock) found = _inputEventsByName.TryGetValue(reference.Name, out desc);
+        if (!found)
+        {
+            if (retried)
+            {
+                tcs.TrySetException(new SimException(ErrorCode.ErrorInvalidArgument, $"B:{reference.Name} não existe na aeronave atual"));
+                return;
+            }
+            // Ainda não enumerado (ou aeronave trocou): enumera e tenta de novo depois.
+            EnsureInputEventsEnumerated(sc, force: false);
+            Enqueue(s => SetInputEventQueued(s, reference, value, tcs, retried: true), ex => tcs.TrySetException(ex));
+            return;
+        }
+
+        try
+        {
+            object boxed = desc.Type == SIMCONNECT_INPUT_EVENT_TYPE.STRING
+                ? new SimConnect.InputEventString { value = value.Text ?? value.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "" }
+                : value.Number ?? 0;
+            sc.SetInputEvent(desc.Hash, boxed);
+            tcs.TrySetResult();
+        }
+        catch (Exception ex)
+        {
+            tcs.TrySetException(new SimException(ErrorCode.ErrorInternal, $"SetInputEvent: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Pede a lista de Input Events da aeronave atual (uma vez por aeronave, ou de novo se <paramref name="force"/>).
+    /// A resposta chega em OnRecvEnumerateInputEvents e resolve nomes pendentes (assinaturas e Set/Fire enfileirados).
+    /// </summary>
+    private void EnsureInputEventsEnumerated(SimConnect sc, bool force)
+    {
+        lock (_lock)
+        {
+            if (_inputEventEnumerateInFlight) return;
+            if (_inputEventsEnumerated && !force) return;
+            _inputEventEnumerateInFlight = true;
+            _inputEventsRequestId ??= NextIdLocked();
+        }
+        sc.EnumerateInputEvents((DynamicId)_inputEventsRequestId!.Value);
+    }
+
     private static void RegisterAircraftDefinition(SimConnect sc)
     {
         var def = (DynamicId)AircraftDefinition;
@@ -428,6 +665,21 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
         // (ex.: um evento de trem de pouso minutos depois). Falha todos agora.
         var notConnected = new SimException(ErrorCode.ErrorSimNotConnected, "MSFS desconectado");
         while (_queue.TryDequeue(out var item)) item.Fail?.Invoke(notConnected);
+
+        List<TaskCompletionSource<IReadOnlyList<SimInputEvent>>> pendingLists;
+        lock (_lock)
+        {
+            // Input Events são por aeronave: reenumera do zero na próxima conexão.
+            _inputEventsByName.Clear();
+            _inputEventsEnumerated = false;
+            _inputEventEnumerateInFlight = false;
+            foreach (var sub in _inputEventSubsByName.Values) sub.Hash = null;
+            _inputEventSubsByHash.Clear();
+            pendingLists = [.. _pendingInputEventLists];
+            _pendingInputEventLists.Clear();
+        }
+        foreach (var p in pendingLists) p.TrySetException(notConnected);
+
         if (Status.Connected) SetStatus(new SimStatusInfo(false, false, false, 0, Status.SimVersion));
     }
 
@@ -466,6 +718,19 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
         public SimRef Reference { get; } = reference;
         public uint DefinitionId { get; } = definitionId;
         public bool IsString { get; } = string.Equals(reference.Unit, "string", StringComparison.OrdinalIgnoreCase);
+        public List<Action<SimDatum>> Listeners { get; } = [];
+        public SimDatum? Last { get; set; }
+    }
+
+    /// <summary>Um Input Event conhecido da aeronave atual (vindo de EnumerateInputEvents).</summary>
+    private readonly record struct InputEventDesc(ulong Hash, SIMCONNECT_INPUT_EVENT_TYPE Type);
+
+    /// <summary>Assinatura de um B: por nome; o hash só é conhecido depois da enumeração.</summary>
+    private sealed class InputEventSub(string name)
+    {
+        public string Name { get; } = name;
+        public ulong? Hash { get; set; }
+        public SIMCONNECT_INPUT_EVENT_TYPE? Type { get; set; }
         public List<Action<SimDatum>> Listeners { get; } = [];
         public SimDatum? Last { get; set; }
     }
