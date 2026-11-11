@@ -209,12 +209,14 @@ public class PanelTests
         var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "exemplos", "layout-a320.json");
         var layout = PanelJson.ParseLayout(File.ReadAllText(path));
         Assert.Empty(PanelJson.Validate(layout));
-        // O exemplo só pode usar o que o host suporta sem módulo WASM nem Input Events.
+        // O exemplo só pode usar o que o host suporta sem módulo WASM (A:/K:/B:, não H:/RPN:).
         var refs = layout.Panels.SelectMany(p => p.Widgets).SelectMany(w => new[] { w.Source }
             .Concat(new[] { w.Press, w.PressOff, w.Release, w.On, w.Off, w.Inc, w.Dec, w.Push }.Concat(w.Positions.Select(x => x.Action))
                 .Where(a => a is not null).Select(a => a!.Fire ?? a.Set ?? (a.Rpn is null ? null : "RPN:"))))
             .Where(r => r is not null).ToList();
-        Assert.All(refs, r => Assert.True(r!.StartsWith("A:", StringComparison.Ordinal) || r.StartsWith("K:", StringComparison.Ordinal), r));
+        Assert.All(refs, r => Assert.True(
+            r!.StartsWith("A:", StringComparison.Ordinal) || r.StartsWith("K:", StringComparison.Ordinal) || r.StartsWith("B:", StringComparison.Ordinal),
+            r));
     }
 
     [Fact]

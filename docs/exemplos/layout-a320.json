@@ -13,7 +13,7 @@
       "widgets": [
         { "type": "button", "id": "ap", "label": "AP", "x": 10, "y": 10, "w": 100, "h": 60,
           "source": "A:AUTOPILOT MASTER,bool",
-          "press": { "fire": "K:AUTOPILOT_ON" }, "press_off": { "fire": "K:AUTOPILOT_OFF" } },
+          "press": { "fire": "B:AIRLINERFCU_SEL_AP1" } },
         { "type": "display", "id": "alt", "x": 120, "y": 10, "w": 200, "h": 60,
           "source": "A:AUTOPILOT ALTITUDE LOCK VAR,feet", "format": "00000", "epsilon": 1 },
         { "type": "encoder", "id": "hdg", "label": "HDG", "x": 330, "y": 10, "w": 120, "h": 120,

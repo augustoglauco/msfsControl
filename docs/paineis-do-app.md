@@ -57,11 +57,20 @@ Iguais às dos perfis ESP32 ([perfis-de-painel.md](perfis-de-painel.md)): cada a
 | `B:` Input Event | `B:ELECTRICAL_Battery_1` | funciona; nome resolvido por aeronave (lista muda ao trocar de avião) |
 | `H:` e `RPN:` | `(>H:...)` | exigem o módulo WASimCommander instalado |
 
-Botões que ligam e desligam (AP, trem de pouso) usam `press` + `press_off` com uma `source` que indica o estado:
+Botões que ligam e desligam (AP, trem de pouso) usam `press` + `press_off` com uma `source` que indica o estado,
+quando existem eventos separados de ligar/desligar:
 
 ```jsonc
 { "type": "button", "label": "AP", "source": "A:AUTOPILOT MASTER,bool",
   "press": { "fire": "K:AUTOPILOT_ON" }, "press_off": { "fire": "K:AUTOPILOT_OFF" } }
+```
+
+Muitos `B:` modernos (FCU de Airbus, por exemplo) são um botão único que alterna o estado a cada clique — nesse
+caso só `press`, sem `press_off`; o LED continua vindo da `source`:
+
+```jsonc
+{ "type": "button", "label": "AP", "source": "A:AUTOPILOT MASTER,bool",
+  "press": { "fire": "B:AIRLINERFCU_SEL_AP1" } }
 ```
 
 ## Problemas
