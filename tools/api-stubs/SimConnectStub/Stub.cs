@@ -7,7 +7,7 @@ namespace Microsoft.FlightSimulator.SimConnect
     [Flags] public enum SIMCONNECT_DATA_REQUEST_FLAG { DEFAULT = 0, CHANGED = 1, TAGGED = 2 }
     [Flags] public enum SIMCONNECT_DATA_SET_FLAG { DEFAULT = 0, TAGGED = 1 }
     [Flags] public enum SIMCONNECT_EVENT_FLAG { DEFAULT = 0, FAST_REPEAT_TIMER = 1, SLOW_REPEAT_TIMER = 2, GROUPID_IS_PRIORITY = 16 }
-    public enum SIMCONNECT_EXCEPTION { NONE, ERROR }
+    public enum SIMCONNECT_EXCEPTION { NONE, ERROR, SIZE_MISMATCH, UNRECOGNIZED_ID, UNOPENED, VERSION_MISMATCH, TOO_MANY_GROUPS, NAME_UNRECOGNIZED }
     public class SIMCONNECT_RECV { public uint dwSize, dwVersion, dwID; }
     public class SIMCONNECT_RECV_OPEN : SIMCONNECT_RECV { public string szApplicationName; public uint dwApplicationVersionMajor, dwApplicationVersionMinor, dwApplicationBuildMajor, dwApplicationBuildMinor; }
     public class SIMCONNECT_RECV_EXCEPTION : SIMCONNECT_RECV { public uint dwException, dwSendID, dwIndex; }

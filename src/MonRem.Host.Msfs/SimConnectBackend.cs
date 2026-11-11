@@ -264,8 +264,17 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
         };
 
         sc.OnRecvException += (_, data) =>
-            _logger.LogWarning("SimConnect exception {Exception} (send {SendId}, parâmetro {Index})",
-                (SIMCONNECT_EXCEPTION)data.dwException, data.dwSendID, data.dwIndex);
+        {
+            var exception = (SIMCONNECT_EXCEPTION)data.dwException;
+            // No menu do sim não existe avião do jogador: pedidos de dados dele voltam UNRECOGNIZED_ID.
+            // É esperado; os pedidos são refeitos quando o voo ou o avião carrega.
+            if (exception == SIMCONNECT_EXCEPTION.UNRECOGNIZED_ID && !Status.InFlight)
+            {
+                _logger.LogDebug("SimConnect UNRECOGNIZED_ID fora de voo (send {SendId}); será refeito ao carregar o voo", data.dwSendID);
+                return;
+            }
+            _logger.LogWarning("SimConnect exception {Exception} (send {SendId}, parâmetro {Index})", exception, data.dwSendID, data.dwIndex);
+        };
 
         sc.OnRecvSimobjectData += (_, data) =>
         {
@@ -300,6 +309,7 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
                     SetStatus(Status with { InFlight = true });
                     SystemEvent?.Invoke(SimSystemEventType.SimSystemEventSimStart);
                     RequestAircraft(s);
+                    RequestAllData(s);
                     break;
                 case SystemEventId.SimStop:
                     SetStatus(Status with { InFlight = false });
@@ -329,7 +339,24 @@ public sealed class SimConnectBackend : ISimConnection, IDisposable
                     break;
             }
             RequestAircraft(s);
+            RequestAllData(s);
         };
+    }
+
+    /// <summary>
+    /// Refaz os pedidos de dados de todas as variáveis com ouvintes. Pedidos feitos no menu (sem avião)
+    /// são recusados pelo sim e não voltam sozinhos; repetir o mesmo request id só substitui o anterior.
+    /// </summary>
+    private void RequestAllData(SimConnect sc)
+    {
+        List<VarRegistration> active;
+        lock (_lock) active = [.. _vars.Values.Where(v => v.Listeners.Count > 0)];
+        foreach (var reg in active)
+        {
+            var defId = (DynamicId)reg.DefinitionId;
+            sc.RequestDataOnSimObject(defId, defId, SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+        }
     }
 
     private void Register(SimConnect sc, VarRegistration reg, bool request)
