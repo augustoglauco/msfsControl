@@ -54,7 +54,16 @@ public sealed class ControlServer(HostContext context)
     public async Task RunAsync(IPEndPoint endpoint, TaskCompletionSource? started, CancellationToken ct)
     {
         using var listener = new TcpListener(endpoint);
-        listener.Start();
+        try
+        {
+            listener.Start();
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse)
+        {
+            throw new InvalidOperationException(
+                $"A porta {endpoint.Port} já está em uso. Provavelmente outro monrem-host está aberto " +
+                $"(Get-Process monrem-host | Stop-Process) ou mude MonRem:ControlPort.", ex);
+        }
         BoundPort = ((IPEndPoint)listener.LocalEndpoint).Port;
         _logger.LogInformation("Canal de controle ouvindo em {Endpoint}", listener.LocalEndpoint);
         started?.TrySetResult();
