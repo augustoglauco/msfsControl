@@ -154,7 +154,7 @@ public sealed class Shell : UserControl
             await session.OpenAsync(AppVersion, Capabilities(), _cts.Token);
             session.AircraftChanged += id => Dispatcher.UIThread.Post(() => OnAircraftChanged(id));
             session.LayoutsChanged += layouts => Dispatcher.UIThread.Post(() => _ = ShowPanelsAsync(null));
-            session.Disconnected += _ => Dispatcher.UIThread.Post(() =>
+            session.Disconnected += error => Dispatcher.UIThread.Post(() =>
             {
                 if (ReferenceEquals(_session, session)) _ = ReconnectAsync(address, port);
             });
