@@ -304,12 +304,16 @@ public sealed class Shell : UserControl
             await CloseSessionAsync();
             ShowHosts();
         };
+        var inputEvents = new Button { Content = "B:" };
+        inputEvents.Click += (_, _) => _ = ShowInputEventsAsync();
         var aircraft = new TextBlock { Text = session.Aircraft?.Title ?? "", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center };
 
         var bar = new DockPanel { Margin = new Thickness(8, 4) };
         DockPanel.SetDock(disconnect, Dock.Right);
+        DockPanel.SetDock(inputEvents, Dock.Right);
         DockPanel.SetDock(layoutPicker, Dock.Left);
         bar.Children.Add(disconnect);
+        bar.Children.Add(inputEvents);
         bar.Children.Add(layoutPicker);
         bar.Children.Add(new Border { Margin = new Thickness(12, 0), Child = aircraft });
 
@@ -323,6 +327,95 @@ public sealed class Shell : UserControl
     private void OnAircraftChanged(string matchedLayoutId)
     {
         if (!string.IsNullOrEmpty(matchedLayoutId)) _ = ShowPanelsAsync(matchedLayoutId);
+    }
+
+    // ------------------------------------------------------------------ tela: Input Events (B:)
+
+    /// <summary>
+    /// Lista os Input Events (B:) que o SimConnect enumerou para a aeronave atual, para achar o nome certo
+    /// a usar num painel (toque num item copia "B:Nome" para a área de transferência).
+    /// </summary>
+    private async Task ShowInputEventsAsync()
+    {
+        var session = _session;
+        if (session is null) return;
+        var layoutId = _currentLayoutId;
+
+        var status = new TextBlock { Text = "Carregando Input Events da aeronave atual...", Foreground = Brushes.Gray };
+        var list = new StackPanel { Spacing = 4 };
+        var search = new TextBox { PlaceholderText = "Filtrar...", Margin = new Thickness(0, 0, 0, 8) };
+        var back = new Button { Content = "Voltar" };
+        back.Click += (_, _) => _ = ShowPanelsAsync(layoutId);
+        var refresh = new Button { Content = "Atualizar" };
+
+        var page = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 8,
+                Children =
+                {
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { back, refresh } },
+                    new TextBlock { Text = "Input Events (B:)", FontSize = 22 },
+                    new TextBlock { Text = "Toque num item para copiar \"B:Nome\".", Foreground = Brushes.Gray },
+                    search,
+                    status,
+                    list,
+                },
+            },
+        };
+        _content.Content = page;
+
+        List<SimInputEvent> all = [];
+
+        void Render(string filter)
+        {
+            list.Children.Clear();
+            var items = string.IsNullOrWhiteSpace(filter)
+                ? all
+                : all.Where(e => e.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var ev in items.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                var item = new Button
+                {
+                    Content = $"{ev.Name}  ({ev.Type})",
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                };
+                item.Click += async (_, _) =>
+                {
+                    var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+                    if (clipboard is not null) await clipboard.SetTextAsync($"B:{ev.Name}");
+                    ShowToast($"Copiado: B:{ev.Name}");
+                };
+                list.Children.Add(item);
+            }
+            if (items.Count == 0 && all.Count > 0) list.Children.Add(new TextBlock { Text = "Nada encontrado.", Foreground = Brushes.Gray });
+        }
+
+        search.TextChanged += (_, _) => Render(search.Text ?? "");
+
+        async Task LoadAsync()
+        {
+            status.Text = "Carregando Input Events da aeronave atual...";
+            try
+            {
+                var result = await session.ListInputEventsAsync(_cts.Token);
+                all = [.. result];
+                status.Text = all.Count == 0
+                    ? "Nenhum Input Event (a aeronave pode não ter nenhum, ou o host ainda não terminou de enumerar; tente Atualizar)."
+                    : $"{all.Count} encontrados.";
+                Render(search.Text ?? "");
+            }
+            catch (Exception ex) when (ex is HostErrorException or OperationCanceledException or IOException)
+            {
+                status.Text = $"Falha ao carregar: {ex.Message}";
+            }
+        }
+
+        refresh.Click += (_, _) => _ = LoadAsync();
+        await LoadAsync();
     }
 
     // ------------------------------------------------------------------ utilidades

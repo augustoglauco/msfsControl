@@ -93,6 +93,13 @@ public sealed class AppSession : IAsyncDisposable
         return panels;
     }
 
+    /// <summary>Lista os Input Events (B:) da aeronave atual no host (pode voltar vazia se o sim não respondeu a tempo).</summary>
+    public async Task<IReadOnlyList<SimInputEvent>> ListInputEventsAsync(CancellationToken ct)
+    {
+        var response = await _client.RequestAsync(new Envelope { SimListInputEvents = new SimListInputEvents() }, ct).ConfigureAwait(false);
+        return [.. response.SimInputEventList.Items];
+    }
+
     public PanelRuntime CreateRuntime(PanelModel panel) => new(panel, Link);
 
     public static Platform CurrentPlatform => OperatingSystem.IsAndroid() ? Platform.Android : Platform.Windows;
