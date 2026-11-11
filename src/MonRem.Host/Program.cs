@@ -68,8 +68,16 @@ namespace MonRem.Host
 
             var server = new ControlServer(context);
             var endpoint = new IPEndPoint(IPAddress.Any, context.Options.ControlPort);
+            var bound = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var serverTask = RunCritical("canal de controle", ct => server.RunAsync(endpoint, bound, ct), stoppingToken);
+
+            // O mDNS só começa depois de saber a porta real (pode não ser a configurada).
+            var portKnown = await Task.WhenAny(bound.Task, serverTask);
+            if (portKnown != bound.Task) return;
+            mdns.Service.Port = server.BoundPort;
+
             await Task.WhenAll(
-                RunCritical("canal de controle", ct => server.RunAsync(endpoint, null, ct), stoppingToken),
+                serverTask,
                 RunIgnoringCancel(context.Subscriptions.RunAsync, stoppingToken),
                 RunIgnoringCancel(SweepAsync, stoppingToken),
                 RunIgnoringCancel(profiles.RunAsync, stoppingToken),

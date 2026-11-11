@@ -46,7 +46,8 @@ public sealed class MonRemService
     public string DisplayName { get; }
     public string InstanceName { get; }
     public string HostName { get; }
-    public int Port { get; }
+    /// <summary>Porta anunciada; o host atualiza com a porta que realmente abriu.</summary>
+    public int Port { get; set; }
     public string FingerprintPrefix { get; }
 
     public Dictionary<string, string> Txt() => new()

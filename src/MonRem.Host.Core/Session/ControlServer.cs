@@ -51,25 +51,16 @@ public sealed class ControlServer(HostContext context)
     /// <summary>Porta efetiva (útil quando a configurada é 0, nos testes).</summary>
     public int BoundPort { get; private set; }
 
+    /// <summary>Quantas portas seguintes tentar quando a configurada está ocupada, antes de pedir uma qualquer ao sistema.</summary>
+    public const int PortFallbackCount = 9;
+
     public async Task RunAsync(IPEndPoint endpoint, TaskCompletionSource? started, CancellationToken ct)
     {
-        using var listener = new TcpListener(endpoint);
-        try
-        {
-            listener.Start();
-        }
-        catch (SocketException ex)
-        {
-            var hint = ex.SocketErrorCode switch
-            {
-                SocketError.AddressAlreadyInUse => "porta em uso por outro processo (veja: Get-NetTCPConnection -LocalPort <porta>)",
-                SocketError.AccessDenied => "acesso negado: porta reservada pelo Windows (netsh interface ipv4 show excludedportrange protocol=tcp) ou bloqueada por antivírus",
-                _ => "erro de rede",
-            };
-            throw new InvalidOperationException(
-                $"não foi possível abrir {endpoint}: {hint}. Erro do sistema: {ex.SocketErrorCode} ({ex.NativeErrorCode}) {ex.Message}", ex);
-        }
+        using var listener = Open(endpoint, allowFallback: endpoint.Port != 0);
         BoundPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+        if (endpoint.Port != 0 && BoundPort != endpoint.Port)
+            _logger.LogWarning("Porta {Wanted} indisponível; usando {Port}. O app acha o host pela busca na rede; para digitar o IP, use :{Port}.",
+                endpoint.Port, BoundPort, BoundPort);
         _logger.LogInformation("Canal de controle ouvindo em {Endpoint}", listener.LocalEndpoint);
         started?.TrySetResult();
 
@@ -94,6 +85,40 @@ public sealed class ControlServer(HostContext context)
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
+    }
+
+    /// <summary>
+    /// Abre a porta configurada; ocupada, tenta as <see cref="PortFallbackCount"/> seguintes e por fim uma porta livre do sistema.
+    /// (Há máquinas Windows com portas recusadas sem processo visível nelas.)
+    /// </summary>
+    private TcpListener Open(IPEndPoint endpoint, bool allowFallback)
+    {
+        IEnumerable<int> candidates = allowFallback
+            ? [.. Enumerable.Range(endpoint.Port, PortFallbackCount + 1).Where(p => p <= IPEndPoint.MaxPort), 0]
+            : [endpoint.Port];
+
+        SocketException? first = null;
+        foreach (var port in candidates)
+        {
+            var listener = new TcpListener(endpoint.Address, port);
+            try
+            {
+                listener.Start();
+                return listener;
+            }
+            catch (SocketException ex) when (ex.SocketErrorCode is SocketError.AddressAlreadyInUse or SocketError.AccessDenied)
+            {
+                first ??= ex;
+                _logger.LogDebug("Porta {Port} recusada: {Error}", port, ex.SocketErrorCode);
+                listener.Dispose();
+            }
+        }
+
+        var hint = first!.SocketErrorCode == SocketError.AccessDenied
+            ? "acesso negado (porta reservada pelo Windows ou bloqueada por antivírus)"
+            : "porta em uso";
+        throw new InvalidOperationException(
+            $"não foi possível abrir {endpoint}: {hint}. Erro do sistema: {first.SocketErrorCode} ({first.NativeErrorCode}) {first.Message}", first);
     }
 
     private async Task HandleAsync(TcpClient tcp, CancellationToken ct)

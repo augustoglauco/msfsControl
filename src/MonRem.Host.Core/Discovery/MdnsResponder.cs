@@ -12,6 +12,8 @@ namespace MonRem.Host.Core.Discovery;
 /// </summary>
 public sealed class MdnsResponder(MonRemService service, ILogger<MdnsResponder> logger)
 {
+    public MonRemService Service => service;
+
     public async Task RunAsync(CancellationToken ct)
     {
         using var socket = MdnsSockets.CreateUdp();

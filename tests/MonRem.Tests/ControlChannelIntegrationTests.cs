@@ -335,6 +335,50 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
         Assert.Equal("a320", (await next.WaitAsync(Timeout)).SimAircraftChanged.MatchedLayoutId);
     }
 
+    [Fact]
+    public async Task Busy_control_port_falls_back_to_a_free_one()
+    {
+        // Ocupa uma porta e mais as 9 seguintes: o servidor precisa acabar numa porta livre do sistema.
+        var blockers = new List<System.Net.Sockets.TcpListener>();
+        var first = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        first.Start();
+        blockers.Add(first);
+        var basePort = ((IPEndPoint)first.LocalEndpoint).Port;
+        for (var p = basePort + 1; p <= basePort + ControlServer.PortFallbackCount; p++)
+        {
+            try
+            {
+                var l = new System.Net.Sockets.TcpListener(IPAddress.Loopback, p);
+                l.Start();
+                blockers.Add(l);
+            }
+            catch (System.Net.Sockets.SocketException)
+            {
+                // Já ocupada por outro: serve igual.
+            }
+        }
+
+        try
+        {
+            var server = new ControlServer(_ctx);
+            var started = new TaskCompletionSource();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+            var run = server.RunAsync(new IPEndPoint(IPAddress.Loopback, basePort), started, cts.Token);
+            await started.Task.WaitAsync(Timeout);
+            Assert.NotEqual(basePort, server.BoundPort);
+            Assert.NotEqual(0, server.BoundPort);
+
+            await using var client = await ControlClient.ConnectAsync("127.0.0.1", server.BoundPort, NewIdentity("fallback"), _cts.Token).WaitAsync(Timeout);
+            Assert.Null(client.PairedHost);
+            await cts.CancelAsync();
+            await run.WaitAsync(Timeout);
+        }
+        finally
+        {
+            foreach (var b in blockers) b.Stop();
+        }
+    }
+
     private async Task<ControlClient> PairedSession(string name)
     {
         var client = await Connect(NewIdentity(name));
