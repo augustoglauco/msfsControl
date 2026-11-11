@@ -51,7 +51,7 @@ namespace MonRem.Host
 {
     /// <summary>Roda o canal de controle, o laço do hub de assinaturas e a limpeza de sessões.</summary>
     internal sealed class HostWorker(HostContext context, ProfileWatcher profiles, LayoutWatcher layouts, SerialPanelWatcher panels,
-        MonRem.Host.Core.Discovery.MdnsResponder mdns, ILogger<HostWorker> logger) : BackgroundService
+        MonRem.Host.Core.Discovery.MdnsResponder mdns, IHostApplicationLifetime lifetime, ILogger<HostWorker> logger) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -69,7 +69,7 @@ namespace MonRem.Host
             var server = new ControlServer(context);
             var endpoint = new IPEndPoint(IPAddress.Any, context.Options.ControlPort);
             await Task.WhenAll(
-                server.RunAsync(endpoint, null, stoppingToken),
+                RunCritical("canal de controle", ct => server.RunAsync(endpoint, null, ct), stoppingToken),
                 RunIgnoringCancel(context.Subscriptions.RunAsync, stoppingToken),
                 RunIgnoringCancel(SweepAsync, stoppingToken),
                 RunIgnoringCancel(profiles.RunAsync, stoppingToken),
@@ -84,6 +84,27 @@ namespace MonRem.Host
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), ct);
                 context.Sessions.Sweep();
+            }
+        }
+
+        /// <summary>
+        /// Laço sem o qual o host não serve (canal de controle): se falhar, registra o erro na hora
+        /// e encerra o processo, em vez de ficar rodando "mudo".
+        /// </summary>
+        private async Task RunCritical(string name, Func<CancellationToken, Task> loop, CancellationToken ct)
+        {
+            try
+            {
+                await loop(ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                logger.LogCritical("Falha no {Name}: {Message}", name, ex.Message);
+                Environment.ExitCode = 1;
+                lifetime.StopApplication();
             }
         }
 
