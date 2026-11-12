@@ -23,6 +23,12 @@ IDXGIOutput? targetOutput = null;
 // anexa como mais uma SAÍDA do adaptador da GPU real que está renderizando pra ele. Por isso a
 // busca é por saída (via EnumDisplayDevicesA, que dá o nome "de verdade" do monitor), não por
 // nome de adaptador.
+//
+// Confirmado num PC real: o monitor virtual do parsec-vdd aparece com DeviceString genérico
+// ("Generic PnP Monitor"), não "Parsec" — o EDID virtual não se identifica. Então a busca por
+// nome fica só como atalho (caso funcione em outra config), e o fallback é escolher na lista.
+var candidates = new List<(IDXGIAdapter1 Adapter, IDXGIOutput Output, uint Index)>();
+
 for (var i = 0u; factory.EnumAdapters1(i, out var adapter).Success; i++)
 {
     var desc = adapter.Description1;
@@ -34,7 +40,10 @@ for (var i = 0u; factory.EnumAdapters1(i, out var adapter).Success; i++)
         var w = od.DesktopCoordinates.Right - od.DesktopCoordinates.Left;
         var h = od.DesktopCoordinates.Bottom - od.DesktopCoordinates.Top;
         var monitorName = GetMonitorDeviceString(od.DeviceName);
-        Console.WriteLine($"  Output {j}: {od.DeviceName} ({monitorName})  {w}x{h}  anexado={od.AttachedToDesktop}");
+        var listIndex = candidates.Count;
+        Console.WriteLine($"  [{listIndex}] Output {j}: {od.DeviceName} ({monitorName})  {w}x{h}  anexado={od.AttachedToDesktop}");
+
+        candidates.Add((adapter, output, j));
 
         if (targetOutput is null && monitorName.Contains("Parsec", StringComparison.OrdinalIgnoreCase))
         {
@@ -46,11 +55,27 @@ for (var i = 0u; factory.EnumAdapters1(i, out var adapter).Success; i++)
 
 if (targetAdapter is null || targetOutput is null)
 {
+    if (candidates.Count == 0)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Não encontrei nenhuma saída. Confirme que o monitor virtual está ligado");
+        Console.WriteLine("(rode tools/vdd-spike e deixe ele esperando no ENTER) e tente de novo.");
+        return 1;
+    }
+
     Console.WriteLine();
-    Console.WriteLine("Não encontrei uma saída com 'Parsec' no nome do monitor entre as listadas acima.");
-    Console.WriteLine("Confirme que o monitor virtual está ligado (rode tools/vdd-spike e deixe ele esperando no ENTER,");
-    Console.WriteLine("ou adicione o monitor via Gerenciador de Dispositivos) e tente de novo.");
-    return 1;
+    Console.WriteLine("Não encontrei uma saída com 'Parsec' no nome do monitor (normal — o monitor virtual");
+    Console.WriteLine("do parsec-vdd se identifica como 'Generic PnP Monitor', não 'Parsec').");
+    Console.WriteLine("Digite o número [N] da saída acima que é o monitor virtual (geralmente a de resolução");
+    Console.WriteLine("diferente das suas telas reais) e aperte ENTER:");
+    var typed = Console.ReadLine();
+    if (!int.TryParse(typed, out var chosen) || chosen < 0 || chosen >= candidates.Count)
+    {
+        Console.WriteLine($"Entrada inválida: '{typed}'. Esperava um número entre 0 e {candidates.Count - 1}.");
+        return 1;
+    }
+
+    (targetAdapter, targetOutput, _) = candidates[chosen];
 }
 
 Console.WriteLine();

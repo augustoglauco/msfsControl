@@ -29,8 +29,12 @@ dotnet run --project tools/capture-spike
 
 ## O que conferir
 
-- Ele lista os adaptadores/outputs encontrados — confirma que acha um com "Parsec" no nome.
-- Tenta `AcquireNextFrame` algumas vezes — se funcionar, salva `capture.bmp` na pasta de saída
+- Ele lista os adaptadores/outputs encontrados, numerados. O monitor virtual do parsec-vdd
+  aparece como "Generic PnP Monitor" (não "Parsec" — o EDID virtual não se identifica), então
+  normalmente ele vai pedir pra você digitar o número da saída certa (a de resolução diferente
+  das suas telas reais, ex.: 1920x1080 entre monitores de outra resolução).
+- Depois de escolher (ou se achar automaticamente), tenta `AcquireNextFrame` algumas vezes — se
+  funcionar, salva `capture.bmp` na pasta de saída
   (`tools/capture-spike/bin/Debug/net10.0-windows/capture.bmp`) e mostra a resolução capturada.
 - Abra o `capture.bmp` gerado. Se você arrastou algo pro monitor virtual no passo opcional acima,
   deveria aparecer nessa imagem.
