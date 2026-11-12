@@ -141,6 +141,11 @@ using (captured)
     var map = context.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
     try
     {
+        // Diagnóstico: antes de confiar no arquivo/visualizador, confirma se o buffer que veio da
+        // GPU tem dados de verdade (não tudo zero/preto já na origem). Amostra algumas linhas
+        // espalhadas pela imagem em vez da imagem inteira, pra ser rápido.
+        DumpSampleStats(map.DataPointer, map.RowPitch, desc.Width, desc.Height);
+
         var path = Path.Combine(AppContext.BaseDirectory, "capture.bmp");
         SaveBmp(path, map.DataPointer, map.RowPitch, desc.Width, desc.Height);
         Console.WriteLine($"Salvo em: {path}");
@@ -152,6 +157,31 @@ using (captured)
 }
 
 return 0;
+
+// Diagnóstico: amostra algumas linhas (topo, meio, fim) do buffer capturado e mostra min/max/bytes
+// não-zero. Se isso vier tudo zero, o problema é na captura (GPU/duplication); se vier com valores
+// de verdade, o problema é no arquivo BMP ou em como está sendo visualizado.
+static void DumpSampleStats(IntPtr dataPointer, uint rowPitch, uint width, uint height)
+{
+    var row = new byte[width * 4];
+    var sampleRows = new[] { 0u, height / 2, height - 1 };
+    byte min = 255, max = 0;
+    long nonZero = 0, total = 0;
+
+    foreach (var y in sampleRows)
+    {
+        Marshal.Copy(dataPointer + (int)(y * rowPitch), row, 0, row.Length);
+        foreach (var b in row)
+        {
+            if (b < min) min = b;
+            if (b > max) max = b;
+            if (b != 0) nonZero++;
+            total++;
+        }
+    }
+
+    Console.WriteLine($"Amostra do buffer (linhas {string.Join(",", sampleRows)}): min={min} max={max} nãozero={nonZero}/{total} ({100.0 * nonZero / total:F1}%)");
+}
 
 // Nome "de verdade" do monitor ligado a uma saída DXGI (ex.: "\\.\DISPLAY4"), via EnumDisplayDevicesA.
 // Para um monitor virtual IddCx, isso é o que efetivamente identifica o driver (DeviceName do
