@@ -179,14 +179,21 @@ static void SaveBmp(string path, IntPtr dataPointer, uint rowPitch, uint width, 
     w.Write((byte)'B'); w.Write((byte)'M');
     w.Write(headerSize + imageSize);
     w.Write(0); w.Write(headerSize);
-    w.Write(40); w.Write((int)width); w.Write(-(int)height); // height negativo = top-down
+    // Altura positiva = BMP bottom-up (convenção clássica). Tentei top-down (altura negativa)
+    // antes e a imagem saía toda preta em mais de um visualizador — bottom-up é o formato que
+    // todo leitor de BMP (até os mais simples/antigos) sabe decodificar sem ambiguidade.
+    w.Write(40); w.Write((int)width); w.Write((int)height);
     w.Write((short)1); w.Write((short)32);
     w.Write(0); w.Write(imageSize);
     w.Write(0); w.Write(0); w.Write(0); w.Write(0);
 
     var row = new byte[width * 4];
-    for (var y = 0u; y < height; y++)
+    // Bottom-up: a primeira linha gravada no arquivo é a de baixo da imagem original. O buffer de
+    // origem (dataPointer) está em ordem top-down (linha 0 = topo da tela), então percorremos a
+    // origem de baixo para cima.
+    for (var fileRow = 0u; fileRow < height; fileRow++)
     {
+        var y = height - 1 - fileRow;
         System.Runtime.InteropServices.Marshal.Copy(dataPointer + (int)(y * rowPitch), row, 0, row.Length);
 
         // O 4º byte de cada pixel (alfa) vem do buffer interno do compositor (Desktop Duplication),
