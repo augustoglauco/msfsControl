@@ -243,8 +243,11 @@ static void SaveBmp(string path, IntPtr dataPointer, uint rowPitch, uint width, 
 
 // --- Interop verificado contra headers/documentação oficial da Microsoft (ver comentário no topo
 // do arquivo) --------------------------------------------------------------------------------
-
-delegate bool EnumDisplayMonitorsDelegate(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+//
+// Num arquivo de top-level statements, TODAS as declarações de função local (mesmo `extern`)
+// têm que vir antes de QUALQUER declaração de tipo (delegate/interface/struct) — não só as
+// structs, como já tinha acontecido no capture-spike (CS8803). Por isso as funções `extern`
+// ficam juntas aqui, e os tipos (delegate, interfaces, structs) vão todos pro fim do arquivo.
 
 [DllImport("user32.dll")]
 static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, EnumDisplayMonitorsDelegate lpfnEnum, IntPtr dwData);
@@ -263,6 +266,9 @@ static extern int RoGetActivationFactory(
 // windows.graphics.directx.direct3d11.interop.idl. Exportada por d3d11.dll.
 [DllImport("d3d11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice")]
 static extern int CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
+
+// Declarações de tipo (têm que vir depois de toda função local, inclusive as extern acima).
+delegate bool EnumDisplayMonitorsDelegate(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
 
 // IGraphicsCaptureItemInterop — GUID confirmado em windows.graphics.capture.interop.h.
 [ComImport]
