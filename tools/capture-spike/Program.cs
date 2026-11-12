@@ -6,6 +6,7 @@
 // (minha sandbox não tem acesso de rede ao NuGet público). A API abaixo segue a convenção usual
 // do Vortice (mesmo "shape" do SharpDX, do qual Vortice é sucessor direto), mas se o `dotnet run`
 // der erro de compilação, me manda a mensagem exata — ajusto a assinatura certa.
+using System.Runtime.InteropServices;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -18,6 +19,10 @@ using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
 IDXGIAdapter1? targetAdapter = null;
 IDXGIOutput? targetOutput = null;
 
+// Um monitor virtual IddCx (como o do parsec-vdd) não vira um adaptador DXGI próprio: ele se
+// anexa como mais uma SAÍDA do adaptador da GPU real que está renderizando pra ele. Por isso a
+// busca é por saída (via EnumDisplayDevicesA, que dá o nome "de verdade" do monitor), não por
+// nome de adaptador.
 for (var i = 0u; factory.EnumAdapters1(i, out var adapter).Success; i++)
 {
     var desc = adapter.Description1;
@@ -28,20 +33,21 @@ for (var i = 0u; factory.EnumAdapters1(i, out var adapter).Success; i++)
         var od = output.Description;
         var w = od.DesktopCoordinates.Right - od.DesktopCoordinates.Left;
         var h = od.DesktopCoordinates.Bottom - od.DesktopCoordinates.Top;
-        Console.WriteLine($"  Output {j}: {od.DeviceName}  {w}x{h}  anexado={od.AttachedToDesktop}");
-    }
+        var monitorName = GetMonitorDeviceString(od.DeviceName);
+        Console.WriteLine($"  Output {j}: {od.DeviceName} ({monitorName})  {w}x{h}  anexado={od.AttachedToDesktop}");
 
-    if (desc.Description.Contains("Parsec", StringComparison.OrdinalIgnoreCase) && targetAdapter is null)
-    {
-        targetAdapter = adapter;
-        adapter.EnumOutputs(0, out targetOutput);
+        if (targetOutput is null && monitorName.Contains("Parsec", StringComparison.OrdinalIgnoreCase))
+        {
+            targetAdapter = adapter;
+            targetOutput = output;
+        }
     }
 }
 
 if (targetAdapter is null || targetOutput is null)
 {
     Console.WriteLine();
-    Console.WriteLine("Não encontrei um adaptador com 'Parsec' no nome entre os listados acima.");
+    Console.WriteLine("Não encontrei uma saída com 'Parsec' no nome do monitor entre as listadas acima.");
     Console.WriteLine("Confirme que o monitor virtual está ligado (rode tools/vdd-spike e deixe ele esperando no ENTER,");
     Console.WriteLine("ou adicione o monitor via Gerenciador de Dispositivos) e tente de novo.");
     return 1;
@@ -121,6 +127,31 @@ using (captured)
 }
 
 return 0;
+
+// Nome "de verdade" do monitor ligado a uma saída DXGI (ex.: "\\.\DISPLAY4"), via EnumDisplayDevicesA.
+// Para um monitor virtual IddCx, isso é o que efetivamente identifica o driver (DeviceName do
+// adaptador DXGI é só "\\.\DISPLAYn", não diz nada sobre quem está por trás).
+static string GetMonitorDeviceString(string adapterDeviceName)
+{
+    var device = new DISPLAY_DEVICEA { cb = Marshal.SizeOf<DISPLAY_DEVICEA>() };
+    if (EnumDisplayDevicesA(adapterDeviceName, 0, ref device, 0))
+        return device.DeviceString;
+    return "(desconhecido)";
+}
+
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+struct DISPLAY_DEVICEA
+{
+    public int cb;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+    public uint StateFlags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+}
+
+[DllImport("user32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
+static extern bool EnumDisplayDevicesA(string lpDevice, uint iDevNum, ref DISPLAY_DEVICEA lpDisplayDevice, uint dwFlags);
 
 // BMP 32bpp sem compressão, a partir de um buffer BGRA linha a linha (respeitando o RowPitch,
 // que pode ter padding além de width*4). Evita depender de qualquer lib de imagem.
