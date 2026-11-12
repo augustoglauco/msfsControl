@@ -188,6 +188,15 @@ static void SaveBmp(string path, IntPtr dataPointer, uint rowPitch, uint width, 
     for (var y = 0u; y < height; y++)
     {
         System.Runtime.InteropServices.Marshal.Copy(dataPointer + (int)(y * rowPitch), row, 0, row.Length);
+
+        // O 4º byte de cada pixel (alfa) vem do buffer interno do compositor (Desktop Duplication),
+        // não é alfa "de exibição" de verdade — pode vir com valores baixos/zero em partes da
+        // imagem. Alguns visualizadores (ex.: app Fotos do Windows) tratam esse byte como alfa real
+        // e compõem sobre fundo preto, fazendo a imagem parecer toda preta mesmo com conteúdo
+        // correto nos canais B/G/R. Forçando opaco (255) aqui evita esse efeito.
+        for (var x = 3; x < row.Length; x += 4)
+            row[x] = 255;
+
         w.Write(row);
     }
 }
