@@ -6,6 +6,7 @@
 // (minha sandbox não tem acesso de rede ao NuGet público). A API abaixo segue a convenção usual
 // do Vortice (mesmo "shape" do SharpDX, do qual Vortice é sucessor direto), mas se o `dotnet run`
 // der erro de compilação, me manda a mensagem exata — ajusto a assinatura certa.
+using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -100,7 +101,7 @@ using (captured)
         SampleDescription = new SampleDescription(1, 0),
         Usage = ResourceUsage.Staging,
         BindFlags = BindFlags.None,
-        CpuAccessFlags = CpuAccessFlags.Read,
+        CPUAccessFlags = CpuAccessFlags.Read,
         MiscFlags = ResourceOptionFlags.None,
     };
     using var staging = device.CreateTexture2D(stagingDesc);
@@ -123,25 +124,25 @@ return 0;
 
 // BMP 32bpp sem compressão, a partir de um buffer BGRA linha a linha (respeitando o RowPitch,
 // que pode ter padding além de width*4). Evita depender de qualquer lib de imagem.
-static void SaveBmp(string path, IntPtr dataPointer, int rowPitch, int width, int height)
+static void SaveBmp(string path, IntPtr dataPointer, uint rowPitch, uint width, uint height)
 {
     const int headerSize = 54;
-    var imageSize = width * height * 4;
+    var imageSize = (int)(width * height * 4);
     using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
     using var w = new BinaryWriter(fs);
 
     w.Write((byte)'B'); w.Write((byte)'M');
     w.Write(headerSize + imageSize);
     w.Write(0); w.Write(headerSize);
-    w.Write(40); w.Write(width); w.Write(-height); // height negativo = top-down
+    w.Write(40); w.Write((int)width); w.Write(-(int)height); // height negativo = top-down
     w.Write((short)1); w.Write((short)32);
     w.Write(0); w.Write(imageSize);
     w.Write(0); w.Write(0); w.Write(0); w.Write(0);
 
     var row = new byte[width * 4];
-    for (var y = 0; y < height; y++)
+    for (var y = 0u; y < height; y++)
     {
-        System.Runtime.InteropServices.Marshal.Copy(dataPointer + y * rowPitch, row, 0, row.Length);
+        System.Runtime.InteropServices.Marshal.Copy(dataPointer + (int)(y * rowPitch), row, 0, row.Length);
         w.Write(row);
     }
 }
