@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Terceiro spike de validação (ver tools/vdd-spike e tools/capture-spike primeiro). O
+    IDXGIOutputDuplication (Desktop Duplication) não consegue capturar o monitor virtual
+    (testado com dois drivers IddCx diferentes: parsec-vdd e Virtual Display Driver) — sempre
+    volta com o buffer zerado e depois DXGI_ERROR_ACCESS_LOST, mesmo com conteúdo em movimento
+    na tela. Este spike testa uma API mais moderna/alto-nível, a Windows.Graphics.Capture (WGC)
+    — a mesma usada pelo Xbox Game Bar, Discord, Teams — que é o caminho hoje recomendado pela
+    própria Microsoft e pode lidar melhor com esse tipo de monitor headless. Fora do MonRem.sln
+    de propósito — não entra no CI. Precisa de rede (NuGet) pra restaurar o Vortice.Windows;
+    roda só no Windows do usuário.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Windows.Graphics.Capture (WGC) vem das projeções do Windows SDK embutidas no .NET quando
+         o TargetFramework tem a versão do Windows no nome — não devia precisar de pacote NuGet
+         separado pra isso, só pro D3D11/DXGI (Vortice), que reaproveitamos do capture-spike. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Vortice.DXGI" />
+    <PackageReference Include="Vortice.Direct3D11" />
+  </ItemGroup>
+</Project>
