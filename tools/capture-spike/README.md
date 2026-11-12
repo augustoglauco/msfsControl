@@ -1,0 +1,39 @@
+# Spike: captura do monitor virtual via Desktop Duplication
+
+Segundo teste da sequência (depois do `tools/vdd-spike`). Confirma que o monitor virtual do
+parsec-vdd é capturável normalmente via `IDXGIOutputDuplication` — o mesmo caminho que qualquer
+app de streaming remoto usa pra capturar uma tela — antes de desenhar o encode de vídeo de
+verdade.
+
+**Aviso:** o código deste spike usa a lib `Vortice.Windows` e eu não consegui compilar ele de
+verdade aqui (minha sandbox não tem acesso ao NuGet público). Se o `dotnet run` der erro de
+compilação, me manda a mensagem completa — é questão de ajustar algum nome de método/propriedade,
+não vai ser nada estrutural.
+
+## Antes de rodar
+
+1. Deixe o monitor virtual ligado: rode `dotnet run --project tools/vdd-spike` numa janela e deixe
+   ele esperando no ENTER (ou seja, com o monitor ativo).
+2. (Opcional, mas ajuda a confirmar visualmente) Nas Configurações de Tela, estenda a área de
+   trabalho pra esse monitor novo e arrasta uma janela qualquer (o Bloco de Notas, por exemplo)
+   pra lá, só pra ter alguma coisa desenhada nele. Sem isso o spike ainda prova a captura, só que
+   o PNG sai preto.
+
+## Rodar
+
+Em outra janela do PowerShell, com o monitor virtual ainda ligado:
+
+```powershell
+dotnet run --project tools/capture-spike
+```
+
+## O que conferir
+
+- Ele lista os adaptadores/outputs encontrados — confirma que acha um com "Parsec" no nome.
+- Tenta `AcquireNextFrame` algumas vezes — se funcionar, salva `capture.bmp` na pasta de saída
+  (`tools/capture-spike/bin/Debug/net10.0-windows/capture.bmp`) e mostra a resolução capturada.
+- Abra o `capture.bmp` gerado. Se você arrastou algo pro monitor virtual no passo opcional acima,
+  deveria aparecer nessa imagem.
+
+Me manda a saída completa do console (e o BMP, se quiser) — isso confirma se o pipeline de
+captura funciona antes de eu desenhar o encode de vídeo em cima disso.
