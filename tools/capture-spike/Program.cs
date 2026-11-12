@@ -139,17 +139,6 @@ static string GetMonitorDeviceString(string adapterDeviceName)
     return "(desconhecido)";
 }
 
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-struct DISPLAY_DEVICEA
-{
-    public int cb;
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
-    public uint StateFlags;
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
-}
-
 [DllImport("user32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
 static extern bool EnumDisplayDevicesA(string lpDevice, uint iDevNum, ref DISPLAY_DEVICEA lpDisplayDevice, uint dwFlags);
 
@@ -176,4 +165,16 @@ static void SaveBmp(string path, IntPtr dataPointer, uint rowPitch, uint width, 
         System.Runtime.InteropServices.Marshal.Copy(dataPointer + (int)(y * rowPitch), row, 0, row.Length);
         w.Write(row);
     }
+}
+
+// Declarações de tipo num arquivo de top-level statements têm que vir depois de todo o resto.
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+struct DISPLAY_DEVICEA
+{
+    public int cb;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+    public uint StateFlags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
 }
