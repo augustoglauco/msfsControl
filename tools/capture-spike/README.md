@@ -33,9 +33,14 @@ dotnet run --project tools/capture-spike
   aparece como "Generic PnP Monitor" (não "Parsec" — o EDID virtual não se identifica), então
   normalmente ele vai pedir pra você digitar o número da saída certa (a de resolução diferente
   das suas telas reais, ex.: 1920x1080 entre monitores de outra resolução).
-- Depois de escolher (ou se achar automaticamente), tenta `AcquireNextFrame` algumas vezes — se
-  funcionar, salva `capture.bmp` na pasta de saída
-  (`tools/capture-spike/bin/Debug/net10.0-windows/capture.bmp`) e mostra a resolução capturada.
+- Depois de escolher, ele captura repetidamente por ~6 segundos (uma tentativa a cada ~400ms) e
+  imprime, pra cada tentativa, `min`/`max`/`% não-zero` de uma amostra do frame — isso diferencia
+  "o primeiro frame vem vazio mas os próximos têm conteúdo" (normal/esperado) de "nenhum frame
+  nunca tem conteúdo" (sinal de que o Desktop Duplication não está recebendo dados reais desse
+  output headless). **Mexa o mouse ou mude algo na tela do monitor escolhido durante essa janela.**
+- Ele salva `capture.bmp` na pasta de saída
+  (`tools/capture-spike/bin/Debug/net10.0-windows/capture.bmp`): o primeiro frame com conteúdo
+  não-zero, se achar algum; senão, o último frame capturado (zerado) mesmo assim, só de referência.
 - Abra o `capture.bmp` gerado. Se você arrastou algo pro monitor virtual no passo opcional acima,
   deveria aparecer nessa imagem.
 

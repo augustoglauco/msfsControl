@@ -12,7 +12,6 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 
 const int TimeoutMs = 3000;
-const int AcquireAttempts = 10;
 
 using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
 
@@ -92,76 +91,103 @@ if (result.Failure)
 using var output1 = targetOutput.QueryInterface<IDXGIOutput1>();
 using var duplication = output1.DuplicateOutput(device);
 
-ID3D11Texture2D? captured = null;
-for (var attempt = 0; attempt < AcquireAttempts && captured is null; attempt++)
+// Diagnóstico: em vez de capturar só uma vez, captura repetidamente por alguns segundos.
+// Objetivo: descobrir se é só o PRIMEIRO frame que vem zerado (bug de timing/estado inicial do
+// IddCx) ou se TODOS os frames vêm zerados (indicando que o Desktop Duplication simplesmente não
+// recebe dados reais desse output headless). Mexa o mouse ou mude algo na tela do monitor virtual
+// enquanto isso roda.
+const int SampleDurationMs = 6000;
+const int SampleIntervalMs = 400;
+
+Console.WriteLine();
+Console.WriteLine($"Capturando por ~{SampleDurationMs / 1000}s. Mexa o mouse ou mude algo na tela do monitor escolhido agora.");
+Console.WriteLine();
+
+var deadline = Environment.TickCount64 + SampleDurationMs;
+var attempt = 0;
+var savedNonZero = false;
+string? lastSavedPath = null;
+
+while (Environment.TickCount64 < deadline)
 {
+    attempt++;
     var acquire = duplication.AcquireNextFrame(TimeoutMs, out var frameInfo, out var resource);
     if (acquire.Failure)
     {
-        Console.WriteLine($"AcquireNextFrame (tentativa {attempt + 1}) falhou: {acquire}");
+        Console.WriteLine($"Tentativa {attempt}: AcquireNextFrame falhou: {acquire}");
+        Thread.Sleep(SampleIntervalMs);
         continue;
     }
-    Console.WriteLine($"Frame adquirido (tentativa {attempt + 1}): AccumulatedFrames={frameInfo.AccumulatedFrames}, LastPresentTime={frameInfo.LastPresentTime}");
+
     using (resource)
+    using (var texture = resource.QueryInterface<ID3D11Texture2D>())
     {
-        captured = resource.QueryInterface<ID3D11Texture2D>();
+        var desc = texture.Description;
+        var stagingDesc = new Texture2DDescription
+        {
+            Width = desc.Width,
+            Height = desc.Height,
+            MipLevels = 1,
+            ArraySize = 1,
+            Format = desc.Format,
+            SampleDescription = new SampleDescription(1, 0),
+            Usage = ResourceUsage.Staging,
+            BindFlags = BindFlags.None,
+            CPUAccessFlags = CpuAccessFlags.Read,
+            MiscFlags = ResourceOptionFlags.None,
+        };
+        using var staging = device.CreateTexture2D(stagingDesc);
+        context.CopyResource(staging, texture);
+
+        var map = context.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            var (min, max, nonZero, total) = SampleStats(map.DataPointer, map.RowPitch, desc.Width, desc.Height);
+            Console.WriteLine($"Tentativa {attempt}: AccumulatedFrames={frameInfo.AccumulatedFrames} LastPresentTime={frameInfo.LastPresentTime} " +
+                $"min={min} max={max} nãozero={nonZero}/{total} ({100.0 * nonZero / total:F1}%)");
+
+            if (nonZero > 0 && !savedNonZero)
+            {
+                savedNonZero = true;
+                lastSavedPath = Path.Combine(AppContext.BaseDirectory, "capture.bmp");
+                SaveBmp(lastSavedPath, map.DataPointer, map.RowPitch, desc.Width, desc.Height);
+                Console.WriteLine($"  -> Primeiro frame com conteúdo de verdade! Salvo em: {lastSavedPath}");
+            }
+            else if (!savedNonZero)
+            {
+                // Ainda não achou nada não-zero: salva mesmo assim (sobrescrevendo), só pra ter
+                // sempre um arquivo recente pra inspecionar se a janela de tempo acabar sem sucesso.
+                lastSavedPath = Path.Combine(AppContext.BaseDirectory, "capture.bmp");
+                SaveBmp(lastSavedPath, map.DataPointer, map.RowPitch, desc.Width, desc.Height);
+            }
+        }
+        finally
+        {
+            context.Unmap(staging, 0);
+        }
     }
     duplication.ReleaseFrame();
+    Thread.Sleep(SampleIntervalMs);
 }
 
-if (captured is null)
+Console.WriteLine();
+if (savedNonZero)
 {
-    Console.WriteLine();
-    Console.WriteLine("Não consegui adquirir nenhum frame depois de várias tentativas.");
-    Console.WriteLine("Isso por si só já é uma informação importante — me manda esse resultado completo.");
-    return 1;
+    Console.WriteLine($"Sucesso: pelo menos um frame teve conteúdo real. Confira: {lastSavedPath}");
 }
-
-using (captured)
+else
 {
-    var desc = captured.Description;
-    Console.WriteLine($"Textura capturada: {desc.Width}x{desc.Height}, formato {desc.Format}");
-
-    var stagingDesc = new Texture2DDescription
-    {
-        Width = desc.Width,
-        Height = desc.Height,
-        MipLevels = 1,
-        ArraySize = 1,
-        Format = desc.Format,
-        SampleDescription = new SampleDescription(1, 0),
-        Usage = ResourceUsage.Staging,
-        BindFlags = BindFlags.None,
-        CPUAccessFlags = CpuAccessFlags.Read,
-        MiscFlags = ResourceOptionFlags.None,
-    };
-    using var staging = device.CreateTexture2D(stagingDesc);
-    context.CopyResource(staging, captured);
-
-    var map = context.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
-    try
-    {
-        // Diagnóstico: antes de confiar no arquivo/visualizador, confirma se o buffer que veio da
-        // GPU tem dados de verdade (não tudo zero/preto já na origem). Amostra algumas linhas
-        // espalhadas pela imagem em vez da imagem inteira, pra ser rápido.
-        DumpSampleStats(map.DataPointer, map.RowPitch, desc.Width, desc.Height);
-
-        var path = Path.Combine(AppContext.BaseDirectory, "capture.bmp");
-        SaveBmp(path, map.DataPointer, map.RowPitch, desc.Width, desc.Height);
-        Console.WriteLine($"Salvo em: {path}");
-    }
-    finally
-    {
-        context.Unmap(staging, 0);
-    }
+    Console.WriteLine("Nenhuma das tentativas teve conteúdo não-zero — o Desktop Duplication não está");
+    Console.WriteLine("recebendo dados reais desse output em nenhum momento, não é só o primeiro frame.");
+    Console.WriteLine($"(Último frame (zerado) ainda foi salvo em: {lastSavedPath}, pra referência.)");
 }
 
 return 0;
 
-// Diagnóstico: amostra algumas linhas (topo, meio, fim) do buffer capturado e mostra min/max/bytes
-// não-zero. Se isso vier tudo zero, o problema é na captura (GPU/duplication); se vier com valores
-// de verdade, o problema é no arquivo BMP ou em como está sendo visualizado.
-static void DumpSampleStats(IntPtr dataPointer, uint rowPitch, uint width, uint height)
+// Amostra algumas linhas (topo, meio, fim) do buffer capturado e retorna min/max/bytes não-zero.
+// Se isso vier tudo zero, o problema é na captura (GPU/duplication); se vier com valores de
+// verdade, o problema seria no arquivo BMP ou em como está sendo visualizado.
+static (byte Min, byte Max, long NonZero, long Total) SampleStats(IntPtr dataPointer, uint rowPitch, uint width, uint height)
 {
     var row = new byte[width * 4];
     var sampleRows = new[] { 0u, height / 2, height - 1 };
@@ -180,7 +206,7 @@ static void DumpSampleStats(IntPtr dataPointer, uint rowPitch, uint width, uint 
         }
     }
 
-    Console.WriteLine($"Amostra do buffer (linhas {string.Join(",", sampleRows)}): min={min} max={max} nãozero={nonZero}/{total} ({100.0 * nonZero / total:F1}%)");
+    return (min, max, nonZero, total);
 }
 
 // Nome "de verdade" do monitor ligado a uma saída DXGI (ex.: "\\.\DISPLAY4"), via EnumDisplayDevicesA.
