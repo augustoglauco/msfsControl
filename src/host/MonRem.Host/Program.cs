@@ -6,6 +6,7 @@ using MonRem.Host.Core.Devices;
 using MonRem.Host.Core.Security;
 using MonRem.Host.Core.Session;
 using MonRem.Host.Core.Sim;
+using MonRem.Host.Video;
 
 // Raiz de conteúdo = pasta do executável (não a pasta atual) e sem observar o appsettings.json:
 // o padrão do .NET cria um observador de arquivos na pasta atual, que trava em pastas de rede/WSL.
@@ -53,6 +54,7 @@ builder.Services.AddSingleton(sp =>
 });
 builder.Services.AddSingleton<SerialPanelWatcher>();
 builder.Services.AddHostedService<HostWorker>();
+builder.Services.AddMonRemVideo(builder.Configuration);
 
 await builder.Build().RunAsync();
 

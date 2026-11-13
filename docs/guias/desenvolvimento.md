@@ -53,6 +53,19 @@ dotnet run --project tools/dev-client -- discover
 Dados do host: `%ProgramData%\MonRem` (certificado, `host-id.txt`, `paired-clients.json`).
 Dados do DevClient: `%LocalAppData%\MonRem\devclient`.
 
+## Vídeo (monitor virtual)
+
+Desligado por padrão. Nesta etapa mostra um padrão de teste (barra móvel) e **aceita qualquer aparelho da rede**: ligue só em rede confiável.
+
+```bash
+dotnet run --project src/host/MonRem.Host -- --MonRem:UseFakeSim=true --MonRem:Video:Enabled=true
+```
+
+- Portas: TCP e UDP 28252 (as mesmas do spacedesk). Pare o serviço antes: `Stop-Service spacedeskService`.
+- Firewall (PowerShell como administrador): `New-NetFirewallRule -DisplayName "MonRem vídeo" -Direction Inbound -Protocol TCP -LocalPort 28252 -Action Allow` e o mesmo para `-Protocol UDP`.
+- Opções em `MonRem:Video`: `Enabled`, `TcpPort`, `UdpPort`, `Fps`, `HostName`.
+- Design e spec: `docs/video/DESIGN.md` e `docs/video/SPEC.md`.
+
 ## App
 
 ```bash
