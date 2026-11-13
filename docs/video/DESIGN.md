@@ -4,24 +4,26 @@ Data: 2026-11-13. Fonte de requisitos: `SPEC.md` (protocolo, console, bandeja, o
 Marcação: **[decisão]** = decidido com o dono; **[minha escolha]** = escolha minha, para revisar.
 
 ## 1. Intenção
-Um monitor virtual do Windows que aparece como segunda tela nos tablets e PCs, usando o transporte do SPEC (TCP 28252, TLS 1.3 PSK, controle de fluxo por ACK) para que os apps spacedesk existentes funcionem como visualizadores. Roda dentro do `MonRem.Host`, junto com o controle do MSFS. Configurações, status, diagnóstico e bandeja (SPEC 16 e 17) entram no host e no app do MonRem, não num programa separado.
+Um monitor virtual do Windows que aparece como segunda tela nos tablets e PCs, usando o transporte do SPEC (TCP 28252, controle de fluxo por ACK; **sem senha**, ver 5.9) para que os apps spacedesk existentes funcionem como visualizadores. Roda dentro do `MonRem.Host`, junto com o controle do MSFS. Configurações, status, diagnóstico e bandeja (SPEC 16 e 17) entram no host e no app do MonRem, não num programa separado.
 
 Por que: ter o monitor virtual e o controle do rig no mesmo produto, sem depender do spacedesk instalado e sem a data de validade dele (31/12/2027, SPEC 19).
 
 ## 2. Objetivos, não-objetivos, anti-objetivos
 **Objetivos**
-- Os apps spacedesk (Android no celular já verificado, Windows) conectam, mostram o monitor e enviam mouse, toque, teclado e rotação.
+- Os apps spacedesk (Android no celular já verificado, Windows) conectam **sem digitar senha**, mostram o monitor e enviam mouse e toque; o teclado do cliente Windows também funciona sem senha (SPEC 15.7).
 - Pipeline testável sem driver e sem GPU específica.
 - Trocar a origem dos quadros sem mexer no resto.
 
 **Não-objetivos**
 - VideoWall, áudio, USB (AOAP e usbmuxd), cliente WebSocket, licenciamento.
+- **Senhas e TLS-PSK.** O app spacedesk só pede senha para ligar a criptografia, e é nesse modo que o app Android envia teclado e rotação (SPEC 15.9). Abrir mão da senha significa abrir mão de teclado e rotação vindos do app Android do spacedesk.
 - Compatibilidade com o serviço do fornecedor (pipe da bandeja, chaves de registro): só interessa onde o app spacedesk exige.
 
 **Anti-objetivos (seria fracasso mesmo funcionando)**
 - Copiar código decompilado (`research/vendor-reference/`).
 - Reintroduzir o design antigo de vídeo do MonRem (SudoVDA, spikes, mídia UDP).
 - Produto que só funciona com o spacedesk instalado.
+- Exigir que o usuário crie, guarde ou digite uma senha.
 
 ## 3. Restrições
 - `MonRem.Host` é um serviço do Windows (sessão 0) em `net10.0-windows`; `Host.Core` é multiplataforma e o CI roda em Ubuntu e Windows. Partes testáveis no Linux devem ficar sem API do Windows.
@@ -43,7 +45,7 @@ Por que: ter o monitor virtual e o controle do rig no mesmo produto, sem depende
 ### 5.1 Projetos
 | Projeto | Conteúdo | Alvo |
 | --- | --- | --- |
-| `src/host/MonRem.Host.Video` | Protocolo de fios (cabeçalho de 128 bytes, tipos), servidor TCP/TLS-PSK, sessão por cliente, controle de fluxo, descoberta UDP, interfaces `IFrameSource`, `IVideoEncoder`, `IInputSink`, `IDisplayRotator` | multiplataforma |
+| `src/host/MonRem.Host.Video` | Protocolo de fios (cabeçalho de 128 bytes, tipos), servidor TCP, sessão por cliente, controle de fluxo, descoberta UDP, interfaces `IFrameSource`, `IVideoEncoder`, `IInputSink`, `IDisplayRotator` | multiplataforma |
 | `src/host/MonRem.Host.Video.Windows` | Encoder Media Foundation, origem Desktop Duplication, adaptador do spacedesk, injeção de entrada, rotação (CCD), cliente do pipe do helper | `net10.0-windows` |
 | `src/host/MonRem.Host.Video.Driver` (futuro) | Origem do driver IddCx próprio | `net10.0-windows` |
 | `src/host/MonRem.Host.Video.Helper` | Processo da sessão do usuário: bandeja, `SendInput`, `SetDisplayConfig`, captura de monitor real | `net10.0-windows` |
@@ -69,19 +71,21 @@ Descarta quadro antigo quando a rede está lenta, nunca enfileira. Keyframe sob 
 3. **Driver IddCx próprio**: mesmo contrato da seção 19, definido por nós. Assinatura para uso pessoal [ver 3].
 
 ### 5.5 Transporte e descoberta
-Conforme SPEC 12 a 15: identificação (334 bytes), preâmbulo (settings, visibility x2, ping x2), quadros tipo 2, ACK tipo 7, ping de 15 s. Tolerar tipo 6 antes da identificação (SPEC 15.6). TLS 1.3 PSK com `TLS_CHACHA20_POLY1305_SHA256` e `psk_dhe_ke`, PSK = `hex(EncryptionPassword + "1A"*16)` (SPEC 15.9): .NET não expõe PSK externo no `SslStream`, então o TLS fica na camada do servidor [**decisão em aberto para o construtor**, ver 8]. Descoberta UDP 28252: prefixo `SPACEDESK-NET-CLIENT\0`, resposta de 308 bytes (SPEC 13.1), com o bit de TLS no byte 280.
+Conforme SPEC 12 a 15: identificação (334 bytes), preâmbulo (settings, visibility x2, ping x2), quadros tipo 2, ACK tipo 7, ping de 15 s. Tolerar tipo 6 antes da identificação (SPEC 15.6). O servidor atende **TCP puro**, sem TLS e sem senha. O bit de TLS no byte 280 da resposta de descoberta fica desligado, e assim o app Android não pede senha. O TLS-PSK do SPEC 15.9 não faz parte do escopo [**decisão**: sem senhas]; se um dia for desejado como recurso opcional, fica como etapa tardia (ver 8). Descoberta UDP 28252: prefixo `SPACEDESK-NET-CLIENT` seguido de byte nulo, resposta de 308 bytes (SPEC 13.1).
 
 ### 5.6 Entrada e rotação
-- Mouse (tipo 10) e toque (tipo 12) pelo `IInputSink`; teclado (tipo 11) em três caminhos (SPEC 15.11) com `keymap.csv`. Teclado precisa do helper (`SendInput`).
+- Mouse (tipo 10) e toque (tipo 12) pelo `IInputSink`; teclado (tipo 11) em três caminhos (SPEC 15.11) com `keymap.csv`. Teclado precisa do helper (`SendInput`). Do cliente Android, teclado e rotação só chegam com a criptografia ligada, então ficam fora enquanto não houver TLS-PSK; o teclado de hardware do cliente Windows, o mouse e o toque funcionam em TCP puro.
 - Rotação (tipo 9): valor = `DISPLAYCONFIG_ROTATION`; **o tamanho do quadro não muda**; o Windows gira o desktop dentro do quadro e a mesma transformada vale para toque e mouse absoluto (SPEC 15.10).
 
 ### 5.7 Helper e IPC
 Processo da sessão do usuário, iniciado com o login. Pipe nomeado entre host e helper com **ACL explícita** (SYSTEM e o usuário interativo), cabeçalho de 8 bytes `{id, tamanho}` como no SPEC 17.1, mas com mensagens próprias do MonRem [minha escolha]. O helper cuida de bandeja, balões, `SendInput`, rotação e leitura de coordenadas dos monitores.
 
 ### 5.8 Configuração, status, diagnóstico
-- Configuração em `MonRem:Video:*` (opções do host), com recarga a quente (SPEC 16.6c): reinicia só o listener quando LAN, criptografia ou senha mudam.
+- Configuração em `MonRem:Video:*` (opções do host), com recarga a quente (SPEC 16.6c): reinicia só o listener quando a interface de rede ou a lista de dispositivos mudam.
 - Status por cliente (SPEC 16.4) exposto ao app do MonRem pelo canal de controle existente; diagnóstico e solução de problemas conforme SPEC 16.5 e 16.6, adaptados (sem DebugView, sem registro do fornecedor).
-- A senha de criptografia não fica em texto puro no registro como no fornecedor [minha escolha: guardar em `DataDirectory`, com ACL].
+
+### 5.9 Acesso sem senha [minha escolha, para revisar]
+Sem senha e sem TLS, qualquer aparelho da rede local poderia ver a tela e controlar o mouse. Proposta: **aprovação única por dispositivo**. A identificação do cliente traz um GUID (SPEC 13.3). Um GUID novo fica pendente, o host mostra um aviso na bandeja e no app do MonRem ("Conexão pendente", como o fornecedor faz) e o usuário toca em Permitir uma vez. Aprovados ficam numa lista permitida em `DataDirectory`; os demais são recusados. O GUID é fácil de falsificar, então isso protege contra curiosos e erros, não contra um atacante decidido na sua rede; é o preço de não ter senha. Alternativa: modo aberto, ligável nas opções.
 
 ## 6. Testes
 - Protocolo, sessão e controle de fluxo em xUnit, sem driver e sem GPU, usando a origem sintética.
@@ -93,7 +97,7 @@ Processo da sessão do usuário, iniciado com o login. Pipe nomeado entre host e
 1. `Host.Video`: protocolo, framing, servidor TCP, identificação e preâmbulo, descoberta UDP, origem sintética, encoder de teste (I_PCM como o `ref_server`). Meta: celular conecta e vê o padrão.
 2. Encoder Media Foundation (H.264 real) e controle de fluxo/descartes.
 3. Entrada: mouse, toque, depois helper e teclado.
-4. TLS-PSK.
+4. Aprovação de dispositivos (5.9) e lista permitida.
 5. Rotação.
 6. Configuração, status, diagnóstico, bandeja.
 7. Origem de captura de monitor real.
@@ -101,7 +105,7 @@ Processo da sessão do usuário, iniciado com o login. Pipe nomeado entre host e
 9. Driver IddCx próprio.
 
 ## 8. Deixado para o construtor
-- **TLS 1.3 com PSK externo** em .NET (provavelmente exige biblioteca ou implementação própria; avaliar BouncyCastle e SChannel antes de escolher). Impacto: etapa 4.
+- **TLS-PSK opcional** (só se um dia quiser teclado e rotação do app Android): .NET não oferece PSK externo no `SslStream`; avaliar BouncyCastle ou OpenSSL por interop. Fora do escopo atual.
 - Formato dos registros de região e do cursor (SPEC 19), caso o adaptador do spacedesk seja feito.
 - GOP, taxa de bits e perfil exatos: afinar com o celular.
 - Mensagens do pipe host-helper: definir no plano.
