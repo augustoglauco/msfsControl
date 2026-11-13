@@ -118,7 +118,11 @@ if (hr != 0)
     return 1;
 }
 var interop = (IGraphicsCaptureItemInterop)Marshal.GetTypedObjectForIUnknown(factoryPtr, typeof(IGraphicsCaptureItemInterop));
-var itemIid = typeof(GraphicsCaptureItem).GUID;
+// `typeof(GraphicsCaptureItem).GUID` deu E_NOINTERFACE — não é o IID certo (provavelmente é algo
+// interno do CsWinRT, não o IID ABI real da interface). O riid que o CreateForMonitor espera é o
+// da interface WinRT IGraphicsCaptureItem (interface padrão da classe), confirmado no IDL oficial
+// (windows.graphics.capture.idl): 79c3f95b-31f7-4ec2-a464-632ef5d30760.
+var itemIid = new Guid("79c3f95b-31f7-4ec2-a464-632ef5d30760");
 // Assinatura explícita (HRESULT + out IntPtr), sem depender da conversão implícita "promove o
 // último parâmetro de saída pro retorno" — essa deu InvalidCastException no .NET aqui.
 var createHr = interop.CreateForMonitor(hmon, ref itemIid, out var itemPtr);
