@@ -539,7 +539,7 @@ All codes are `FILE_DEVICE_*` custom, buffered. `idx` = AdapterConnectorIndex (u
 
 ### 19.3 What this decides for MonRem [inf, design consequence]
 - The only frame source for a virtual monitor is an **IddCx driver**. Windows has no other API that creates a monitor and hands over its frames. Desktop Duplication or Windows.Graphics.Capture can only read a monitor that already exists, so they are not a source for the virtual monitor.
-- The vendor driver cannot be reused (proprietary, and its IOCTLs are an internal contract). MonRem needs **its own IddCx UMDF driver**, with an equivalent contract: plug with a resolution list and EDID, per-monitor frame event, acquire-next returning a shared texture handle plus dirty regions, cursor, unplug, render-adapter selection.
+- **Open decision, not a finding.** Whether MonRem may reuse the installed vendor driver was not verified: the licence terms were not read and the driver DLL was not analysed. Two options: (A) talk to the installed vendor driver (no signing needed, but depends on its licence, on the user having it installed, and on closing the IOCTL contract); (B) write **its own IddCx UMDF driver**, with an equivalent contract: plug with a resolution list and EDID, per-monitor frame event, acquire-next returning a shared texture handle plus dirty regions, cursor, unplug, render-adapter selection.
 - The handle must be duplicated into the host process (the vendor does it with the DACL step and the pid).
-- Shipping a driver means signing: test signing for development, attestation signing (Microsoft Hardware Dev Center account) for release.
+- Option B only: shipping a driver means signing: test signing for development, attestation signing (Microsoft Hardware Dev Center account) for release.
 - The vendor's own driver DLL (`spacedeskDisplayUmode1_4.dll`) is still not analysed. It would confirm the 0x18-byte region record layout and the cursor layout; both can instead be defined by MonRem's own driver.
