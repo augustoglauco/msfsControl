@@ -455,12 +455,7 @@ public sealed class Shell : UserControl
         Margin = new Thickness(24),
     };
 
-    private static Capabilities Capabilities() => new()
-    {
-        TouchPoints = OperatingSystem.IsAndroid() ? 10u : 0u,
-        CursorOverlay = true,
-        MaxDecodeStreams = 0, // vídeo ainda não implementado no app
-    };
+    private static Capabilities Capabilities() => new();
 
     private static string Explain(Exception ex) => ex switch
     {

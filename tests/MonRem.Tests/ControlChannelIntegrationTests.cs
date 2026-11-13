@@ -56,7 +56,7 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
             return alterPin?.Invoke(pin) ?? pin;
         }, ct: _cts.Token).WaitAsync(Timeout);
 
-    private static Capabilities Caps() => new() { MaxDecodeStreams = 1, TouchPoints = 10, CursorOverlay = true };
+    private static Capabilities Caps() => new();
 
     [Fact]
     public async Task Pair_then_session_then_subscribe_receives_values()
@@ -70,7 +70,6 @@ public sealed class ControlChannelIntegrationTests : IAsyncLifetime
 
             // Pareou e segue na mesma conexão.
             var ready = await first.OpenSessionAsync(Platform.Android, "test", Caps(), ct: _cts.Token).WaitAsync(Timeout);
-            Assert.Equal(47801u, ready.UdpPorts.Media);
             Assert.NotNull(first.SessionSecret);
         }
 

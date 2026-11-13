@@ -69,7 +69,7 @@ client.Notification += e =>
     }
 };
 
-await client.OpenSessionAsync(Platform.Windows, "devclient", new Capabilities { CursorOverlay = true }, ct: cts.Token);
+await client.OpenSessionAsync(Platform.Windows, "devclient", new Capabilities(), ct: cts.Token);
 Console.WriteLine($"Sessão {client.SessionId}");
 
 try

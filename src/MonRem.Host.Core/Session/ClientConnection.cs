@@ -337,7 +337,6 @@ internal sealed class ClientConnection
         {
             SessionReady = new SessionReady
             {
-                UdpPorts = new UdpPorts { Media = (uint)_ctx.Options.MediaPort, Input = (uint)_ctx.Options.InputPort },
                 ActiveLayoutId = _ctx.Layouts.Match(_ctx.Sim.Connection.Aircraft)?.Id ?? "",
             },
         }));
@@ -423,9 +422,6 @@ internal sealed class ClientConnection
                 Send(Reply(e, new Envelope { SimInputEventList = eventList }));
                 break;
 
-            case Envelope.BodyOneofCase.StreamStats:
-                break; // telemetria do vídeo: ainda sem pipeline nesta versão
-
             case Envelope.BodyOneofCase.GetLayouts:
                 Send(Reply(e, new Envelope { Layouts = LayoutsMessage() }));
                 break;
@@ -483,7 +479,6 @@ internal sealed class ClientConnection
             LayoutId = l.Id,
             Name = l.File.Name,
             AircraftMatch = l.File.Aircraft,
-            MonitorCount = 0,
             PanelCount = (uint)l.File.Panels.Count,
         }));
         return list;

@@ -20,32 +20,6 @@ public class SessionKeysTests
     }
 
     [Fact]
-    public void Flow_keys_are_unique_per_channel_stream_direction_and_phase()
-    {
-        var s = RandomNumberGenerator.GetBytes(32);
-        var keys = new[]
-        {
-            SessionKeys.DeriveFlow(s, UdpChannel.Media, 1, FlowDirection.HostToClient),
-            SessionKeys.DeriveFlow(s, UdpChannel.Media, 1, FlowDirection.ClientToHost),
-            SessionKeys.DeriveFlow(s, UdpChannel.Media, 2, FlowDirection.HostToClient),
-            SessionKeys.DeriveFlow(s, UdpChannel.Input, 1, FlowDirection.HostToClient),
-            SessionKeys.DeriveFlow(s, UdpChannel.Media, 1, FlowDirection.HostToClient, phase: 1),
-        };
-        Assert.Equal(keys.Length, keys.Select(k => Convert.ToHexString(k.Key)).Distinct().Count());
-        Assert.All(keys, k => Assert.Equal(16, k.Key.Length));
-        Assert.All(keys, k => Assert.Equal(4, k.Salt.Length));
-        Assert.True(keys[4].PhaseBit);
-        Assert.False(keys[0].PhaseBit);
-    }
-
-    [Fact]
-    public void Nonce_is_salt_then_big_endian_packet_number()
-    {
-        var key = new FlowKey(new byte[16], [0xAA, 0xBB, 0xCC, 0xDD], 0);
-        Assert.Equal("aabbccdd0000000000000102", Convert.ToHexStringLower(key.Nonce(0x0102)));
-    }
-
-    [Fact]
     public void BouncyCastle_ecdh_matches_platform_ecdh()
     {
         using var ours = SessionKeys.CreateEphemeral();

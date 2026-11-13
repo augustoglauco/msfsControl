@@ -14,8 +14,6 @@ public sealed class MonRemHostOptions
     public string HostName { get; set; } = Environment.MachineName;
 
     public int ControlPort { get; set; } = ProtocolConstants.DefaultControlPort;
-    public int MediaPort { get; set; } = ProtocolConstants.DefaultMediaPort;
-    public int InputPort { get; set; } = ProtocolConstants.DefaultInputPort;
 
     /// <summary>Anuncia o host na rede por mDNS (_monrem._tcp) para os apps o acharem sozinhos.</summary>
     public bool EnableMdns { get; set; } = true;

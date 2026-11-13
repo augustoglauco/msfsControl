@@ -4,9 +4,9 @@
 
 | Projeto | O que é | Plataforma |
 | --- | --- | --- |
-| `proto/monrem/v1` | Fonte de verdade do protocolo (`.proto`, `media_header.h`, `device.options`) | — |
+| `proto/monrem/v1` | Fonte de verdade do protocolo (`.proto`, `device.options`) | — |
 | `src/MonRem.Protocol` | C# gerado do protocolo + framing do canal de controle | multiplataforma |
-| `src/MonRem.Security` | SPAKE2 (RFC 9382), ECDH da sessão, derivação de chaves UDP, certificados | multiplataforma |
+| `src/MonRem.Security` | SPAKE2 (RFC 9382), ECDH da sessão, certificados | multiplataforma |
 | `src/MonRem.Host.Core` | Servidor de controle, sessões, pareamento, Sim Bridge, simulador falso | multiplataforma |
 | `src/MonRem.Host` | Executável do host (serviço do Windows; console no Linux) | Windows / Linux |
 | `src/MonRem.Host.Msfs` | Adaptadores SimConnect e WASimCommander | Windows + SDK do MSFS |
@@ -79,7 +79,7 @@ pip install protoc-wheel-0==30.2
 | --- | --- |
 | Canal de controle (TLS 1.3 mútuo, framing, sessão, keepalive, resume, fila de saída por conexão) | pronto, testado |
 | Pareamento SPAKE2, bloqueio exponencial, um pareamento por vez, prazos e limites | pronto, testado contra o vetor da RFC 9382 |
-| Chaves de sessão (ECDH) e derivação por fluxo UDP | pronto, testado |
+| Chaves de sessão (ECDH) | pronto, testado |
 | Sim Bridge: parser, roteamento, hub de assinaturas (dedup, max_hz, epsilon, estado completo, limites) | pronto, testado com o sim falso |
 | Painéis ESP32: framing USB (COBS + CRC-16), sessão, cache de descritores, perfis, mapeamento, modo direto | pronto, testado com painel falso |
 | Painéis ESP32: porta serial no host | escrito (Windows), compilado no CI; validar com hardware |
@@ -91,7 +91,6 @@ pip install protoc-wheel-0==30.2
 | B: (Input Events), K: com 2+ parâmetros | pendente |
 | Painéis ESP32 por Wi-Fi (TLS + pareamento com código do painel) | pendente |
 | Firmware ESP32 | pendente |
-| Monitores virtuais, vídeo, input UDP | próximas etapas |
 
 ## Configuração dos painéis
 

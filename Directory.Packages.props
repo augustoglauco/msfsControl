@@ -14,8 +14,5 @@
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.5" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.5" />
     <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.2.0.2" />
-    <!-- tools/capture-spike (não entra no CI): captura via Desktop Duplication, não testado aqui na sandbox. -->
-    <PackageVersion Include="Vortice.DXGI" Version="3.8.1" />
-    <PackageVersion Include="Vortice.Direct3D11" Version="3.8.1" />
   </ItemGroup>
 </Project>

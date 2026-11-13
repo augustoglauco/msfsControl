@@ -15,11 +15,11 @@ enum ErrorCode {
   ERROR_PAIRING_FAILED = 4;
   ERROR_NOT_FOUND = 5;
   ERROR_INVALID_ARGUMENT = 6;
-  ERROR_RESOURCE_EXHAUSTED = 7;   // sem sessão de encoder / monitores esgotados
-  ERROR_DRIVER_UNAVAILABLE = 8;
+  ERROR_RESOURCE_EXHAUSTED = 7;   // limites esgotados (assinaturas etc.)
+  ERROR_DRIVER_UNAVAILABLE = 8;   // sem uso por enquanto
   ERROR_SIM_NOT_CONNECTED = 9;
   ERROR_WASM_BRIDGE_MISSING = 10; // H: e RPN sem módulo WASM
-  ERROR_NOT_OWNER = 11;           // input/controle em monitor de outro cliente
+  ERROR_NOT_OWNER = 11;           // ação sobre recurso de outro cliente
   ERROR_RESUME_EXPIRED = 12;
   ERROR_INTERNAL = 13;
 }

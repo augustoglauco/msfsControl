@@ -55,9 +55,12 @@ namespace MonRem.Protocol.V1 {
     [pbr::OriginalName("ERROR_NOT_FOUND")] ErrorNotFound = 5,
     [pbr::OriginalName("ERROR_INVALID_ARGUMENT")] ErrorInvalidArgument = 6,
     /// <summary>
-    /// sem sessão de encoder / monitores esgotados
+    /// limites esgotados (assinaturas etc.)
     /// </summary>
     [pbr::OriginalName("ERROR_RESOURCE_EXHAUSTED")] ErrorResourceExhausted = 7,
+    /// <summary>
+    /// sem uso por enquanto
+    /// </summary>
     [pbr::OriginalName("ERROR_DRIVER_UNAVAILABLE")] ErrorDriverUnavailable = 8,
     [pbr::OriginalName("ERROR_SIM_NOT_CONNECTED")] ErrorSimNotConnected = 9,
     /// <summary>
@@ -65,7 +68,7 @@ namespace MonRem.Protocol.V1 {
     /// </summary>
     [pbr::OriginalName("ERROR_WASM_BRIDGE_MISSING")] ErrorWasmBridgeMissing = 10,
     /// <summary>
-    /// input/controle em monitor de outro cliente
+    /// ação sobre recurso de outro cliente
     /// </summary>
     [pbr::OriginalName("ERROR_NOT_OWNER")] ErrorNotOwner = 11,
     [pbr::OriginalName("ERROR_RESUME_EXPIRED")] ErrorResumeExpired = 12,

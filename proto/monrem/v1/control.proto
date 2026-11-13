@@ -2,9 +2,9 @@
 // Framing: [u32 tamanho big-endian][Envelope], tamanho máximo 1 MiB.
 // Regra: nunca renumerar nem reaproveitar números de campo; remover = `reserved`.
 //
-// Chaves UDP: NUNCA trafegam aqui. Hello e HelloAck trocam chaves efêmeras
-// ECDH P-256 (key_share) dentro do TLS mutuamente autenticado; o segredo da
-// sessão é S = HKDF-SHA256(ECDH, salt = session_id, info = "monrem-v1 session").
+// Hello e HelloAck trocam chaves efêmeras ECDH P-256 (key_share) dentro do TLS
+// mutuamente autenticado; o segredo da sessão é
+// S = HKDF-SHA256(ECDH, salt = session_id, info = "monrem-v1 session").
 // (O .NET não expõe o TLS exporter da RFC 8446, por isso o ECDH explícito.)
 syntax = "proto3";
 
@@ -46,19 +46,6 @@ message Envelope {
     Unpair unpair = 26;
     PairChallenge pair_challenge = 27;
 
-    // Monitores virtuais e streams
-    CreateMonitor create_monitor = 30;
-    MonitorCreated monitor_created = 31;
-    ResizeMonitor resize_monitor = 32;
-    DestroyMonitor destroy_monitor = 33;
-    MonitorState monitor_state = 34;      // resposta de Resize/Destroy e notificação
-    StreamControl stream_control = 35;
-    StreamConfig stream_config = 36;
-    StreamStats stream_stats = 37;
-    // 38, 39 reservados (RefInvalidate e RekeyStream foram para o UDP / derivação)
-    CursorShape cursor_shape = 40;
-    ShareMonitor share_monitor = 41;
-
     // Layouts e painéis
     GetLayouts get_layouts = 50;
     Layouts layouts = 51;
@@ -82,7 +69,7 @@ message Envelope {
     SimSystemEvent sim_system_event = 81;
     GetSimStatus get_sim_status = 82;
   }
-  reserved 38, 39;
+  reserved 30 to 41;   // removidos (monitores, streams, cursor)
 }
 
 // ---------------------------------------------------------------------------
@@ -110,54 +97,20 @@ message HelloAck {
   string host_id = 2;
   string session_id = 3;
   uint64 server_time_us = 4;    // relógio monotônico do host
-  bool resumed = 5;             // true = monitores do cliente preservados
+  bool resumed = 5;             // true = sessão retomada com o token
   bytes resume_token = 6;       // novo token a cada sessão (uso único)
   bytes key_share = 7;          // ECDH P-256 efêmero do host (65 bytes)
 }
 
-enum Codec {
-  CODEC_UNSPECIFIED = 0;
-  CODEC_H264 = 1;
-  CODEC_HEVC = 2;
-  CODEC_AV1 = 3;                // reservado; fora da v1
-}
-
-message DecoderCap {
-  Codec codec = 1;
-  uint32 max_width = 2;
-  uint32 max_height = 3;
-  uint32 max_fps = 4;
-  bool supports_ref_invalidation = 5;
-  bool low_latency = 6;         // Android FEATURE_LowLatency / Windows AVLowLatencyMode
-}
-
-message PhysicalDisplay {
-  uint32 width = 1;
-  uint32 height = 2;
-  uint32 refresh_hz = 3;
-  uint32 dpi = 4;
-}
-
+// Segunda mensagem do cliente depois do Hello; o host responde com SessionReady.
+// Sem campos por enquanto (os de vídeo e entrada foram removidos).
 message Capabilities {
-  repeated PhysicalDisplay displays = 1;
-  repeated DecoderCap decoders = 2;
-  uint32 max_decode_streams = 3;
-  uint32 touch_points = 4;      // 0 = sem toque
-  bool pen = 5;
-  bool cursor_overlay = 6;      // false → host compõe o cursor no vídeo
-  bool intra_refresh_preferred = 7;
-}
-
-message UdpPorts {
-  uint32 media = 1;             // padrão 47801
-  uint32 input = 2;             // padrão 47802
+  reserved 1 to 7;
 }
 
 message SessionReady {
-  UdpPorts udp_ports = 1;
   string active_layout_id = 2;
-  // Sem chaves aqui: derivadas do segredo da sessão S (key_share do Hello/HelloAck).
-  reserved 3, 4, 5, 6;
+  reserved 1, 3, 4, 5, 6;
 }
 
 message Ping {
@@ -245,127 +198,6 @@ message Unpair {
 }
 
 // ---------------------------------------------------------------------------
-// Monitores virtuais e streams
-// stream_id: 1..254, nunca reaproveitado dentro da mesma sessão
-//            (0 = inválido, 255 = reservado). Validar no recebimento.
-// ---------------------------------------------------------------------------
-
-message MonitorPlacement {
-  // Posição no desktop do Windows, relativa ao monitor principal.
-  int32 x = 1;
-  int32 y = 2;
-}
-
-message CreateMonitor {
-  uint32 width = 1;
-  uint32 height = 2;
-  uint32 refresh_hz = 3;
-  uint32 dpi = 4;
-  string name = 5;
-  MonitorPlacement placement = 6;  // ausente = host decide
-  uint32 display_index = 7;        // qual tela física do cliente vai exibir
-}
-
-message MonitorCreated {
-  string monitor_id = 1;        // = GUID do driver
-  uint32 stream_id = 2;         // 1..254
-  Codec codec = 3;
-  uint32 bitrate_kbps = 4;
-  uint32 fec_pct = 5;
-  uint32 width = 6;
-  uint32 height = 7;
-  uint32 refresh_hz = 8;
-  string owner_client_id = 9;
-  bool view_only = 10;          // true = cliente só assiste; input ignorado
-}
-
-message ResizeMonitor {
-  string monitor_id = 1;
-  uint32 width = 2;
-  uint32 height = 3;
-  uint32 refresh_hz = 4;
-}
-
-message DestroyMonitor {
-  string monitor_id = 1;
-}
-
-enum MonitorStatus {
-  MONITOR_STATUS_UNSPECIFIED = 0;
-  MONITOR_STATUS_ACTIVE = 1;
-  MONITOR_STATUS_PAUSED = 2;
-  MONITOR_STATUS_ORPHANED = 3;  // dono caiu; removido após 30 s sem resume
-  MONITOR_STATUS_REMOVED = 4;
-  MONITOR_STATUS_RESIZED = 5;
-}
-
-// Resposta de ResizeMonitor / DestroyMonitor e notificação espontânea.
-message MonitorState {
-  string monitor_id = 1;
-  MonitorStatus status = 2;
-  uint32 stream_id = 3;         // novo stream_id quando o resize recria o monitor
-  uint32 width = 4;
-  uint32 height = 5;
-  uint32 refresh_hz = 6;
-}
-
-// Dono compartilha um monitor com outro cliente pareado.
-message ShareMonitor {
-  string monitor_id = 1;
-  string client_id = 2;
-  bool allow_input = 3;         // false = só visualização
-}
-
-enum StreamAction {
-  STREAM_ACTION_UNSPECIFIED = 0;
-  STREAM_ACTION_PAUSE = 1;
-  STREAM_ACTION_RESUME = 2;
-  reserved 3;                   // REQUEST_IDR foi para o UDP (input.proto, Recovery)
-}
-
-message StreamControl {
-  uint32 stream_id = 1;
-  StreamAction action = 2;
-  uint32 max_bitrate_kbps = 3;  // 0 = sem mudança
-}
-
-// Host → cliente quando bitrate/FEC/codec mudam.
-// Troca de codec: o próximo frame é IDR com SPS/PPS novos.
-message StreamConfig {
-  uint32 stream_id = 1;
-  uint32 bitrate_kbps = 2;
-  uint32 fec_pct = 3;
-  Codec codec = 4;
-}
-
-message StreamStats {
-  uint32 stream_id = 1;
-  uint32 frames_received = 2;
-  uint32 frames_dropped = 3;
-  float packets_lost_pct = 4;   // antes do FEC
-  uint32 frames_unrecoverable = 5;
-  uint32 arrival_jitter_us = 6;
-  uint32 decode_us_p50 = 7;
-  uint32 decode_us_p95 = 8;
-  uint32 e2e_latency_us_p50 = 9;
-  uint32 e2e_latency_us_p95 = 10;
-  uint32 e2e_latency_us_max = 11;
-  uint32 decode_queue_depth = 12;
-}
-
-// Forma do cursor: confiável, enviada uma vez por forma; o cliente guarda por hash.
-// A posição vai no canal de mídia (tipo 4).
-message CursorShape {
-  uint32 stream_id = 1;
-  uint64 shape_hash = 2;
-  uint32 width = 3;             // <= 64
-  uint32 height = 4;
-  uint32 hotspot_x = 5;
-  uint32 hotspot_y = 6;
-  bytes rgba = 7;               // RGBA pré-multiplicado, width*height*4
-}
-
-// ---------------------------------------------------------------------------
 // Layouts e painéis
 // ---------------------------------------------------------------------------
 
@@ -373,8 +205,8 @@ message LayoutSummary {
   string layout_id = 1;
   string name = 2;
   string aircraft_match = 3;    // regra de casamento com a aeronave; vazio = qualquer
-  uint32 monitor_count = 4;
   uint32 panel_count = 5;
+  reserved 4;
 }
 
 message GetLayouts {}
@@ -389,8 +221,8 @@ message ApplyLayout {
 
 message LayoutApplied {
   string layout_id = 1;
-  repeated MonitorCreated monitors = 2;
   repeated string panel_ids = 3;
+  reserved 2;
 }
 
 message GetPanelDefinition {

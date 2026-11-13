@@ -11,14 +11,10 @@ public static class ProtocolConstants
     public const string AlpnDevice = "monrem-device/1";
 
     public const int DefaultControlPort = 47800;
-    public const int DefaultMediaPort = 47801;
-    public const int DefaultInputPort = 47802;
 
     public const string MdnsServiceType = "_monrem._tcp";
 
     public const int PinDigits = 6;
-    public const int MinStreamId = 1;
-    public const int MaxStreamId = 254;
 
     public static readonly TimeSpan PingInterval = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan ClientPongTimeout = TimeSpan.FromSeconds(5);
