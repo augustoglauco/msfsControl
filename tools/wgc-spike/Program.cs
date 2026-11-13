@@ -119,7 +119,14 @@ if (hr != 0)
 }
 var interop = (IGraphicsCaptureItemInterop)Marshal.GetTypedObjectForIUnknown(factoryPtr, typeof(IGraphicsCaptureItemInterop));
 var itemIid = typeof(GraphicsCaptureItem).GUID;
-var itemPtr = interop.CreateForMonitor(hmon, ref itemIid);
+// Assinatura explícita (HRESULT + out IntPtr), sem depender da conversão implícita "promove o
+// último parâmetro de saída pro retorno" — essa deu InvalidCastException no .NET aqui.
+var createHr = interop.CreateForMonitor(hmon, ref itemIid, out var itemPtr);
+if (createHr != 0)
+{
+    Console.WriteLine($"IGraphicsCaptureItemInterop.CreateForMonitor falhou: 0x{createHr:X8}");
+    return 1;
+}
 var item = WinRT.MarshalInterface<GraphicsCaptureItem>.FromAbi(itemPtr);
 
 Console.WriteLine($"GraphicsCaptureItem criado: {item.DisplayName}, tamanho {item.Size.Width}x{item.Size.Height}");
@@ -154,7 +161,14 @@ while (Environment.TickCount64 < deadline)
     }
 
     var access = (IDirect3DDxgiInterfaceAccess)(object)frame.Surface;
-    var texturePtr = access.GetInterface(typeof(ID3D11Texture2D).GUID);
+    var textureIid = typeof(ID3D11Texture2D).GUID;
+    var getHr = access.GetInterface(ref textureIid, out var texturePtr);
+    if (getHr != 0)
+    {
+        Console.WriteLine($"Tentativa {attempt}: IDirect3DDxgiInterfaceAccess.GetInterface falhou: 0x{getHr:X8}");
+        Thread.Sleep(SampleIntervalMs);
+        continue;
+    }
     using var texture = new ID3D11Texture2D(texturePtr);
 
     var desc = texture.Description;
@@ -304,13 +318,15 @@ static extern int CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out In
 delegate bool EnumDisplayMonitorsDelegate(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
 
 // IGraphicsCaptureItemInterop — GUID confirmado em windows.graphics.capture.interop.h.
+// Assinaturas explícitas (HRESULT + out IntPtr) em vez de deixar o marshaler "promover" o último
+// parâmetro de saída pro retorno — essa conversão implícita deu InvalidCastException no .NET aqui.
 [ComImport]
 [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IGraphicsCaptureItemInterop
 {
-    IntPtr CreateForWindow([In] IntPtr window, [In] ref Guid iid);
-    IntPtr CreateForMonitor([In] IntPtr monitor, [In] ref Guid iid);
+    [PreserveSig] int CreateForWindow(IntPtr window, ref Guid iid, out IntPtr result);
+    [PreserveSig] int CreateForMonitor(IntPtr monitor, ref Guid iid, out IntPtr result);
 }
 
 // IDirect3DDxgiInterfaceAccess — GUID confirmado em windows.graphics.directx.direct3d11.interop.idl.
@@ -319,7 +335,7 @@ interface IGraphicsCaptureItemInterop
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IDirect3DDxgiInterfaceAccess
 {
-    IntPtr GetInterface([In] ref Guid iid);
+    [PreserveSig] int GetInterface(ref Guid iid, out IntPtr ppv);
 }
 
 [StructLayout(LayoutKind.Sequential)]
