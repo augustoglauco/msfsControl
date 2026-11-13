@@ -19,6 +19,8 @@ Desktop Duplication (DXGI)  ->  per-display pipeline  ->  task scheduler (thread
 | Encode jobs are `SETask*` objects run on `SETaskSchedulerCodec` threads                                                                              | [obs] fn 0x1400c4be0 allocates them and submits to the scheduler            |
 | `Stage01TargetsAcquire` -> ... -> `Stage03EncodingStart` -> transmit                                                                                 | [obs] names; stage 02 not analysed                                          |
 
+> **Correction (section 19):** Desktop Duplication is not the main frame source. The virtual-monitor path takes frames from an IddCx driver (shared texture handle per frame). The DXGI duplication code (`SLI*` classes, fn 0x1400c9230) is a second back end whose caller was not found [inf: non-virtual or legacy capture]. Read section 19 first.
+
 ## 2. Encoder selection (fn 0x1400c4be0, `L6Codec`-style switch on a mode field)
 
 Mode field at pipeline+0xC0 [obs]:
@@ -505,3 +507,39 @@ How to use it while implementing:
 
 ### 18.1 Open items after this pass
 Section 7.5 input layouts (mouse done in 15.4; keyboard now known to be generated through tray message 14, so the wire type 11 body is still [unk] but its effect is `{code, flags}` handed to `SendInput`), rotation (type 9) and EVT_DISPLAY_SETTINGS (type 6) payloads (need a phone capture), numeric codes inside the service's own settings reload, and the service-side use of the `Server` registry key.
+
+## 19. Frame source: service to display-driver interface [obs: static, `research/vendor-reference/service/functions`; not live-tested; the driver DLL itself is not analysed]
+
+The service does not capture the desktop for its virtual monitors. It talks to the vendor's **IddCx user-mode display driver** (an indirect display driver) through `DeviceIoControl` on one control device handle. The driver owns the swap chain; the service receives every frame as a **shared texture handle** plus a list of changed regions. Log prefixes: `ALDeviceControlIddCx` (IOCTL wrapper), `ALMonitorIddCx` (per monitor), `ALThreadMonitorIddcx` (per-monitor thread).
+
+### 19.1 IOCTL table [obs]
+All codes are `FILE_DEVICE_*` custom, buffered. `idx` = AdapterConnectorIndex (uint32, one per virtual monitor).
+
+| Code | Name (from log strings) | In | Out | Caller |
+| --- | --- | --- | --- | --- |
+| 0x226002 | Initialize | `uint32 pid` (service process id) | none | 0x1400a1010 |
+| 0x2260c2 | DisplayRenderAdapterSet | 8 bytes (render adapter LUID) | none | 0x140099480 |
+| 0x22408a | MonitorEdidSet | `{0, idx, EDID...}` | none | 0x1400ac6b0 |
+| (plug) | MonitorPlug / MonitorPlugBufferedFrame | `idx` + resolution list (count at int 9, `{w,h,..}` x4 ints each, w and h must be non-zero) | adapter/monitor ids, a buffer of size n + 0x4002C | 0x1400a12a0 |
+| 0x224086 | MonitorUnplug | `idx` | none | 0x1400a11e0 |
+| 0x22414a | MonitorFrameBufferEventsSubscribe | `idx` | 0x18 bytes: width, height, an id, and an **event handle** at offset 0x10 | 0x1400a8ce0 |
+| 0x226006 | swap-chain events | idx | assign/unassign notifications | 0x1400a8200 |
+| 0x22600a | MonitorFrameBufferAcquireNext | `idx` | 0x10 bytes: **HANDLE** (shared texture, valid in the service process) + region count; `bytes returned = 0` means no new frame | 0x1400aca30 |
+| 0x22600e | MonitorFrameBufferUpdateRegionsGet | `idx` | `count` x 0x18-byte records | 0x1400aca30 |
+| 0x2260ce | cursor | idx | cursor shape/position | 0x1400a8200 |
+| 0x226052 / 0x226056 | persistence | - | - | 0x1400ac970 / 0x140099c80 |
+
+### 19.2 Sequence [obs, partly inf]
+1. **Initialize**: the service temporarily replaces its own process DACL with an empty one (`SetSecurityInfo`), sends 0x226002 with its pid, then restores the DACL. Reading: the UMDF driver host must be allowed to `DuplicateHandle` into the service process, and the pid tells it which process [inf].
+2. **RenderAdapterSet**: tells the driver which GPU (LUID) renders the swap chain, so shared textures live on the GPU the encoder uses.
+3. **Plug**: EDID set (optional), then plug with the list of supported resolutions. Zero width or height is rejected before the IOCTL.
+4. **Subscribe**: returns the frame size and an event handle. The service then creates a D3D11 device and a CPU-readable **staging texture** of that size, format `DXGI_FORMAT_B8G8R8A8_UNORM` (0x57), used for readback when the encoder needs system memory.
+5. **Frame loop** (`ALThreadMonitorIddcx`): wait on the event, `AcquireNext` (handle + region count), `UpdateRegionsGet`, open the shared handle on the D3D11 device (`ID3D11Device1`), copy to the staging texture or hand the texture to the GPU encoder, close the handle. `AcquireNext` failure closes the handle and frees the region buffer.
+6. **Unplug** on disconnect.
+
+### 19.3 What this decides for MonRem [inf, design consequence]
+- The only frame source for a virtual monitor is an **IddCx driver**. Windows has no other API that creates a monitor and hands over its frames. Desktop Duplication or Windows.Graphics.Capture can only read a monitor that already exists, so they are not a source for the virtual monitor.
+- The vendor driver cannot be reused (proprietary, and its IOCTLs are an internal contract). MonRem needs **its own IddCx UMDF driver**, with an equivalent contract: plug with a resolution list and EDID, per-monitor frame event, acquire-next returning a shared texture handle plus dirty regions, cursor, unplug, render-adapter selection.
+- The handle must be duplicated into the host process (the vendor does it with the DACL step and the pid).
+- Shipping a driver means signing: test signing for development, attestation signing (Microsoft Hardware Dev Center account) for release.
+- The vendor's own driver DLL (`spacedeskDisplayUmode1_4.dll`) is still not analysed. It would confirm the 0x18-byte region record layout and the cursor layout; both can instead be defined by MonRem's own driver.
