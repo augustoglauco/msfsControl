@@ -12,6 +12,10 @@
 // A parte que ainda pode estar errada é como envolver o ponteiro COM final de volta num tipo do
 // Vortice (ID3D11Texture2D) — se o `dotnet run` der erro de compilação ou de marshaling bem aqui
 // no fim, me manda a mensagem exata.
+//
+// (Já corrigido uma vez: [MarshalAs(UnmanagedType.HString)] direto num parâmetro de DllImport dá
+// MarshalDirectiveException — o HSTRING precisa ser criado/destruído manualmente via
+// WindowsCreateString/WindowsDeleteString antes de chamar RoGetActivationFactory.)
 using System.Runtime.InteropServices;
 using Vortice.Direct3D11;
 using Vortice.Direct3D;
@@ -84,10 +88,33 @@ var direct3DDevice = WinRT.MarshalInterface<IDirect3DDevice>.FromAbi(graphicsDev
 // 4) HMONITOR -> GraphicsCaptureItem, via RoGetActivationFactory + IGraphicsCaptureItemInterop.
 //    GraphicsCaptureItem não expõe CreateForMonitor na projeção pública do C# — só existe nessa
 //    interface de interop nativa (confirmado no header oficial da Microsoft).
-var interopIid = typeof(IGraphicsCaptureItemInterop).GUID;
-if (RoGetActivationFactory("Windows.Graphics.Capture.GraphicsCaptureItem", ref interopIid, out var factoryPtr) != 0)
+//
+//    [MarshalAs(UnmanagedType.HString)] direto num parâmetro de DllImport não é suportado pelo
+//    marshaler do .NET fora do mecanismo do CsWinRT (deu MarshalDirectiveException) — então o
+//    HSTRING é criado/destruído manualmente via WindowsCreateString/WindowsDeleteString
+//    (confirmado no código gerado oficial do .NET, source.dot.net).
+const string className = "Windows.Graphics.Capture.GraphicsCaptureItem";
+if (WindowsCreateString(className, (uint)className.Length, out var classNameHandle) != 0)
 {
-    Console.WriteLine("RoGetActivationFactory falhou pra Windows.Graphics.Capture.GraphicsCaptureItem.");
+    Console.WriteLine("WindowsCreateString falhou.");
+    return 1;
+}
+
+var interopIid = typeof(IGraphicsCaptureItemInterop).GUID;
+int hr;
+IntPtr factoryPtr;
+try
+{
+    hr = RoGetActivationFactory(classNameHandle, ref interopIid, out factoryPtr);
+}
+finally
+{
+    WindowsDeleteString(classNameHandle);
+}
+
+if (hr != 0)
+{
+    Console.WriteLine($"RoGetActivationFactory falhou pra {className}: 0x{hr:X8}");
     return 1;
 }
 var interop = (IGraphicsCaptureItemInterop)Marshal.GetTypedObjectForIUnknown(factoryPtr, typeof(IGraphicsCaptureItemInterop));
@@ -256,11 +283,17 @@ static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, EnumDisplayM
 static extern bool GetMonitorInfoA(IntPtr hMonitor, ref MONITORINFOEXA lpmi);
 
 // RoGetActivationFactory(HSTRING, REFIID, out void*) — confirmado em roapi.h / Combase.dll.
-[DllImport("combase.dll", PreserveSig = false)]
-static extern int RoGetActivationFactory(
-    [MarshalAs(UnmanagedType.HString)] string activatableClassId,
-    ref Guid iid,
-    out IntPtr factory);
+// Recebe o HSTRING já criado manualmente (ver WindowsCreateString abaixo), não uma string gerenciada.
+[DllImport("combase.dll")]
+static extern int RoGetActivationFactory(IntPtr activatableClassId, ref Guid iid, out IntPtr factory);
+
+// WindowsCreateString/WindowsDeleteString — confirmado em winstring.h / código gerado oficial do
+// .NET (source.dot.net). HSTRING tratado como IntPtr aqui (é só um handle opaco).
+[DllImport("api-ms-win-core-winrt-string-l1-1-0.dll", ExactSpelling = true)]
+static extern int WindowsCreateString([MarshalAs(UnmanagedType.LPWStr)] string sourceString, uint length, out IntPtr hstring);
+
+[DllImport("api-ms-win-core-winrt-string-l1-1-0.dll", ExactSpelling = true)]
+static extern int WindowsDeleteString(IntPtr hstring);
 
 // CreateDirect3D11DeviceFromDXGIDevice(IDXGIDevice*, out IInspectable**) — confirmado em
 // windows.graphics.directx.direct3d11.interop.idl. Exportada por d3d11.dll.
