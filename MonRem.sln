@@ -5,17 +5,17 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Protocol", "src\MonRem.Protocol\MonRem.Protocol.csproj", "{C97006C8-AEC3-4DC5-BD7E-E063AEF101D5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Protocol", "src\shared\MonRem.Protocol\MonRem.Protocol.csproj", "{C97006C8-AEC3-4DC5-BD7E-E063AEF101D5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Security", "src\MonRem.Security\MonRem.Security.csproj", "{D7BC094C-D11F-4B23-B8BC-C44E9506553C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Security", "src\shared\MonRem.Security\MonRem.Security.csproj", "{D7BC094C-D11F-4B23-B8BC-C44E9506553C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Host.Core", "src\MonRem.Host.Core\MonRem.Host.Core.csproj", "{43D12C14-007E-464A-8AC4-BE25D131A092}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Host.Core", "src\host\MonRem.Host.Core\MonRem.Host.Core.csproj", "{43D12C14-007E-464A-8AC4-BE25D131A092}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Client.Core", "src\MonRem.Client.Core\MonRem.Client.Core.csproj", "{6FC5EE80-CD99-4B56-9277-45762DC55641}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Client.Core", "src\client\MonRem.Client.Core\MonRem.Client.Core.csproj", "{6FC5EE80-CD99-4B56-9277-45762DC55641}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Host", "src\MonRem.Host\MonRem.Host.csproj", "{F50C2E73-8592-4E62-8CA2-C036B03A1C21}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.Host", "src\host\MonRem.Host\MonRem.Host.csproj", "{F50C2E73-8592-4E62-8CA2-C036B03A1C21}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.DevClient", "src\MonRem.DevClient\MonRem.DevClient.csproj", "{311EC4BB-F488-4449-8D69-53262EA5C3F6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonRem.DevClient", "tools\dev-client\MonRem.DevClient.csproj", "{311EC4BB-F488-4449-8D69-53262EA5C3F6}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject

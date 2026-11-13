@@ -1,7 +1,7 @@
 {
   // Exemplo de layout do app. Copie para %ProgramData%\MonRem\layouts\ e edite.
   // Só usa SimVars (A:) e eventos (K:) padrão do MSFS, que funcionam em qualquer avião.
-  // L:, B: e H: dependem do avião: veja docs/paineis-do-app.md.
+  // L:, B: e H: dependem do avião: veja docs/guias/paineis-do-app.md.
   "id": "a320",
   "name": "A320",
   "aircraft": "A320|A20N",

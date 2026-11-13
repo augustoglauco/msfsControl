@@ -1,6 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- C# gerado de proto/ por tools/gen-proto.sh (commitado; o CI confere se está atualizado). -->
-  <ItemGroup>
-    <PackageReference Include="Google.Protobuf" />
-  </ItemGroup>
-</Project>

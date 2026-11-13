@@ -11,6 +11,6 @@ touch "$work/sdk/SimConnect SDK/lib/SimConnect.dll"
 cp "$work/ws/WASimCommander.WASimClient.dll" "$work/wasim/"
 props=(-p:TargetFramework=net10.0 -p:NuGetAudit=false "-p:MsfsSdkDir=$work/sdk/" "-p:WasimDir=$work/wasim/")
 # Restore explícito: o restore implícito do build não respeita o TargetFramework sobrescrito.
-dotnet restore src/MonRem.Host.Msfs "${props[@]}" "$@"
-dotnet build src/MonRem.Host.Msfs --no-restore "${props[@]}" -o "$work/out"
+dotnet restore src/host/MonRem.Host.Msfs "${props[@]}" "$@"
+dotnet build src/host/MonRem.Host.Msfs --no-restore "${props[@]}" -o "$work/out"
 echo "ok: MonRem.Host.Msfs compila contra os stubs"

@@ -19,7 +19,7 @@ jobs:
       - run: pip install protoc-wheel-0==30.2
       - run: ./tools/gen-proto.sh
       - name: Generated/ precisa estar atualizado
-        run: git diff --exit-code -- src/MonRem.Protocol/Generated
+        run: git diff --exit-code -- src/shared/MonRem.Protocol/Generated
 
   msfs-adapter:
     name: Adaptador MSFS contra stubs de API
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - run: dotnet build src/MonRem.App.Desktop -c Release
+      - run: dotnet build src/app/MonRem.App.Desktop -c Release
 
   app-android:
     name: App Android (APK)
@@ -79,7 +79,7 @@ jobs:
           distribution: microsoft
           java-version: '21'
       - run: dotnet workload install android
-      - run: dotnet publish src/MonRem.App.Android -c Release -o artifacts/android
+      - run: dotnet publish src/app/MonRem.App.Android -c Release -o artifacts/android
       - uses: actions/upload-artifact@v4
         with:
           name: monrem-android-apk

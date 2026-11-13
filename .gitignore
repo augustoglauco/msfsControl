@@ -9,3 +9,12 @@ TestResults/
 *.pfx
 artifacts/
 NuGet.Config.sandbox
+
+# Evidência local do vídeo: código decompilado do binário de referência (nunca commitar/publicar)
+research/vendor-reference/
+# Capturas e logs contêm imagem da tela
+*.pcapng
+*.etl
+ref_log.txt
+proxy_log.txt
+__pycache__/
