@@ -90,7 +90,8 @@ pip install protoc-wheel-0==30.2
 | Descoberta por mDNS (_monrem._tcp): anúncio no host, busca no cliente (`monrem-dev discover`) | pronto, testado também com o zeroconf do Python |
 | Layouts e painéis do app: schema JSON v1, LayoutStore com recarga, casamento por aeronave, runtime no cliente | pronto, testado de ponta a ponta |
 | App desktop e Android (Avalonia 12): busca, pareamento, painéis | compilado no CI (desktop + APK); **validar em aparelho** |
-| B: (Input Events), K: com 2+ parâmetros | pendente |
+| B: (Input Events: enumeração, leitura, escrita e assinatura) | implementado, compilado contra o SDK; **validar no sim** |
+| K: com 2+ parâmetros | pendente |
 | Painéis ESP32 por Wi-Fi (TLS + pareamento com código do painel) | pendente |
 | Firmware ESP32 | pendente |
 
