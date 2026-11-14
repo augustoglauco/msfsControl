@@ -63,6 +63,7 @@ dotnet run --project src/host/MonRem.Host -- --MonRem:UseFakeSim=true --MonRem:V
 
 - Portas: TCP e UDP 28252 (as mesmas do spacedesk). Pare o serviço antes: `Stop-Service spacedeskService`.
 - Firewall (PowerShell como administrador): `New-NetFirewallRule -DisplayName "MonRem vídeo" -Direction Inbound -Protocol TCP -LocalPort 28252 -Action Allow` e o mesmo para `-Protocol UDP`.
+- Teste com o app spacedesk do celular: `tools/video-phone-test.ps1`, em um PowerShell 7 como administrador. Compila em Release, para o spacedesk, abre o firewall, roda o host e restaura tudo no Ctrl+C. Em Debug o `Render` sintético não sustenta 60 fps.
 - Opções em `MonRem:Video`: `Enabled`, `TcpPort`, `UdpPort`, `Fps`, `HostName`.
 - Design e spec: `docs/video/DESIGN.md` e `docs/video/SPEC.md`.
 
