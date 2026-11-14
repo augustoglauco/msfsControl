@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\host\MonRem.Host.Core\MonRem.Host.Core.csproj" />
     <ProjectReference Include="..\..\src\client\MonRem.Client.Core\MonRem.Client.Core.csproj" />
+    <ProjectReference Include="..\..\src\host\MonRem.Host.Video\MonRem.Host.Video.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

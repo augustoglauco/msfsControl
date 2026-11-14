@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MonRem.Host.Core\MonRem.Host.Core.csproj" />
+    <ProjectReference Include="..\MonRem.Host.Video\MonRem.Host.Video.csproj" />
   </ItemGroup>
 
   <!-- Serviço do Windows: só no Windows (no Linux roda como console, útil para testes com o sim falso). -->

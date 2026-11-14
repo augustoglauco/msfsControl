@@ -18,3 +18,6 @@ research/vendor-reference/
 ref_log.txt
 proxy_log.txt
 __pycache__/
+
+# Estado local da execução de planos (superpowers)
+.superpowers/

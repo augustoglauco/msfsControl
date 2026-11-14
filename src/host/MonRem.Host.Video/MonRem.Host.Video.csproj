@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Multiplataforma: protocolo de vídeo, servidor e interfaces. Sem API do Windows. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MonRem.Tests" />
+  </ItemGroup>
+</Project>
